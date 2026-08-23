@@ -119,6 +119,10 @@ public struct WhatsAppExpandedCardView: View {
     @State private var replyText: String = ""
     @State private var isSending: Bool = false
     @State private var isSentSuccess: Bool = false
+    @State private var successScale: CGFloat = 0.6
+    @State private var successOpacity: Double = 0
+    @State private var checkmarkScale: CGFloat = 0.0
+    @State private var glowOpacity: Double = 0
     @FocusState private var isFieldFocused: Bool
     
     private var message: WhatsAppMessage { activity.message }
@@ -192,21 +196,47 @@ public struct WhatsAppExpandedCardView: View {
             // Quick Reply Capsule Input Bar
             HStack(spacing: 8) {
                 if isSentSuccess {
-                    // Cool Sent Success Animation Banner
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(waGreen)
+                    // Multi-step animated success banner
+                    ZStack {
+                        // Glow pulse behind
+                        Capsule()
+                            .fill(waGreen.opacity(0.08 * glowOpacity))
+                            .blur(radius: 6)
+                            .scaleEffect(1.0 + (glowOpacity * 0.06))
                         
-                        Text("Reply Sent!")
-                            .font(.system(size: 12.5, weight: .bold, design: .rounded))
-                            .foregroundColor(waGreen)
+                        HStack(spacing: 8) {
+                            // Animated checkmark
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(waGreen)
+                                .scaleEffect(checkmarkScale)
+                                .shadow(color: waGreen.opacity(0.6), radius: 4)
+                            
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Sent!")
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                                    .foregroundColor(waGreen)
+                                Text("Opening WhatsApp…")
+                                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                                    .foregroundColor(waGreen.opacity(0.75))
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 9)
+                        .background(
+                            LinearGradient(
+                                colors: [waGreen.opacity(0.18), waGreen.opacity(0.10)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule().stroke(waGreen.opacity(0.35 * glowOpacity), lineWidth: 1.5)
+                        )
                     }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 7)
-                    .background(waGreen.opacity(0.15))
-                    .clipShape(Capsule())
-                    .transition(.scale.combined(with: .opacity))
+                    .scaleEffect(successScale)
+                    .opacity(successOpacity)
                 } else {
                     // Inline Text Field
                     HStack(spacing: 6) {
@@ -325,33 +355,67 @@ public struct WhatsAppExpandedCardView: View {
         guard !trimmed.isEmpty, !isSending else { return }
         
         isSending = true
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-            isSentSuccess = true
-        }
+        isFieldFocused = false
+        replyText = ""
         
-        // Execute reply sending
+        // Send the message in background
         WhatsAppNotificationService.shared.sendReply(text: trimmed)
         
-        // Smooth delay to appreciate the cool checkmark animation, then collapse
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) {
+        // Step 1: Snap success banner into view
+        isSentSuccess = true
+        withAnimation(.spring(response: 0.30, dampingFraction: 0.60)) {
+            successScale = 1.03
+            successOpacity = 1.0
+        }
+        
+        // Step 2: Animate checkmark pop-in and glow
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) {
+                checkmarkScale = 1.15
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.7)) {
+                checkmarkScale = 1.0
+            }
+            withAnimation(.easeInOut(duration: 0.4)) {
+                glowOpacity = 1.0
+            }
+        }
+        
+        // Step 3: Settle and slight scale settle
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                successScale = 1.0
+            }
+        }
+        
+        // Step 4: Fade out with a shimmer shrink, then collapse
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            withAnimation(.easeIn(duration: 0.22)) {
+                glowOpacity = 0
+                successOpacity = 0.6
+                successScale = 0.88
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.35) {
             dismissAndCollapse()
         }
     }
     
     private func dismissAndCollapse() {
         isFieldFocused = false
-        if let win = NSApp.windows.first(where: { $0 is DynamicIslandWindow }) {
-            win.resignKey()
-        }
         
         WhatsAppNotificationService.shared.dismissMessage()
         controller.activityManager.removeActivity(id: activity.id)
         
-        // Gracefully collapse to running activity (e.g. Music / Timer) or idle
-        if controller.activityManager.activeActivity != nil {
-            controller.transition(to: .compact)
-        } else {
-            controller.transition(to: .idle)
+        // Gracefully morph to running activity (e.g. Music / Timer) or idle notch
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+            if controller.activityManager.activeActivity != nil {
+                controller.transition(to: .compact)
+            } else {
+                controller.transition(to: .idle)
+            }
         }
     }
 }
