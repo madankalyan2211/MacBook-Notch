@@ -72,6 +72,11 @@ public final class WindowManager: ObservableObject {
         caffeineParentItem.submenu = caffeineMenu
         menu.addItem(caffeineParentItem)
         
+        let weatherItem = NSMenuItem(title: "🌤️ Show Ambient Weather (Idle)", action: #selector(toggleWeatherAction), keyEquivalent: "")
+        weatherItem.target = self
+        weatherItem.state = controller.isWeatherEnabled ? .on : .off
+        menu.addItem(weatherItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitAppAction), keyEquivalent: "q")
@@ -283,6 +288,19 @@ public final class WindowManager: ObservableObject {
     
     @objc private func caffeineOffAction() {
         CaffeineService.shared.deactivate()
+    }
+    
+    @objc private func toggleWeatherAction() {
+        controller.isWeatherEnabled.toggle()
+        if !controller.isWeatherEnabled {
+            controller.activityManager.removeActivity(id: "activity.weather")
+            if controller.state != .idle {
+                controller.transition(to: .idle)
+            }
+        } else {
+            controller.scheduleAmbientWeatherPresentation(delay: 180.0)
+        }
+        setupStatusItem()
     }
     
     @objc private func testLowBatteryAction() {
