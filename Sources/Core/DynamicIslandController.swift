@@ -180,7 +180,7 @@ public final class DynamicIslandController: ObservableObject {
                     isFinished: timer.isFinished
                 )
                 if self.activityManager.getActivity(id: "activity.music") != nil {
-                    self.activityManager.promoteTemporarily(activity: timerAct, duration: 2.0, fallbackId: "activity.music")
+                    self.activityManager.highlightPersistentActivity(activity: timerAct, duration: 2.5, returnToId: "activity.music")
                 } else {
                     self.activityManager.presentActivity(timerAct)
                 }
@@ -235,7 +235,7 @@ public final class DynamicIslandController: ObservableObject {
                     isFinished: (macTimer.remainingTime <= 0)
                 )
                 if self.activityManager.getActivity(id: "activity.music") != nil {
-                    self.activityManager.promoteTemporarily(activity: timerAct, duration: 2.0, fallbackId: "activity.music")
+                    self.activityManager.highlightPersistentActivity(activity: timerAct, duration: 2.5, returnToId: "activity.music")
                 } else {
                     self.activityManager.presentActivity(timerAct)
                 }

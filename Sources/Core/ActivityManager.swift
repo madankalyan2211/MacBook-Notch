@@ -112,6 +112,22 @@ public final class ActivityManager: ObservableObject {
         }
     }
     
+    /// Highlights a persistent concurrent activity in foreground for `duration` seconds when it starts,
+    /// then smoothly switches foreground focus back to `returnToId` (e.g. Music) while keeping the activity active in the stack (secondary bubble)!
+    public func highlightPersistentActivity(activity: any DynamicIslandActivity, duration: TimeInterval, returnToId: String) {
+        // Insert into stack persistently
+        presentActivity(activity)
+        
+        // After duration, return foreground focus to returnToId if it is still present in stack
+        let returnTimer = Timer(timeInterval: duration, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            if self.activeActivity?.id == activity.id && self.getActivity(id: returnToId) != nil {
+                self.setActiveActivity(id: returnToId)
+            }
+        }
+        RunLoop.main.add(returnTimer, forMode: .common)
+    }
+    
     /// Temporarily makes an activity the active foreground activity for `duration` seconds,
     /// then cleanly removes it and smoothly restores foreground focus to `fallbackId` (e.g. Music).
     public func promoteTemporarily(activity: any DynamicIslandActivity, duration: TimeInterval, fallbackId: String?) {
