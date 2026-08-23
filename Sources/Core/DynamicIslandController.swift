@@ -74,8 +74,8 @@ public final class DynamicIslandController: ObservableObject {
                 if self.state != .idle {
                     self.transition(to: .idle)
                 }
-                // Wait 3.0s of sustained idle time before showing ambient weather
-                self.scheduleAmbientWeatherPresentation(delay: 3.0)
+                // Wait 3 minutes (180.0s) of sustained idle time before showing ambient weather
+                self.scheduleAmbientWeatherPresentation(delay: 180.0)
             }
         }
         
@@ -531,14 +531,14 @@ public final class DynamicIslandController: ObservableObject {
             }
         }
         
-        // Initial presentation of ambient weather with 3.0s idle delay
+        // Initial presentation of ambient weather with 3 minutes idle delay
         if isWeatherEnabled {
-            scheduleAmbientWeatherPresentation(delay: 3.0)
+            scheduleAmbientWeatherPresentation(delay: 180.0)
         }
     }
     
-    /// Schedules ambient weather presentation after a sustained idle period (3.0s)
-    public func scheduleAmbientWeatherPresentation(delay: TimeInterval = 3.0) {
+    /// Schedules ambient weather presentation after a sustained idle period (3 minutes / 180s)
+    public func scheduleAmbientWeatherPresentation(delay: TimeInterval = 180.0) {
         idleWeatherTimer?.invalidate()
         idleWeatherTimer = nil
         
