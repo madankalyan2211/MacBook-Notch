@@ -1,0 +1,21 @@
+# Xcode & Swift Package Manager
+.build/
+Packages/
+Package.pins
+Package.resolved
+*.xcodeproj
+*.xcworkspace
+.swiftpm/
+
+# macOS Artifacts
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Build outputs
+build/
+*.dmg
+*.zip
