@@ -532,6 +532,21 @@ public final class DynamicIslandController: ObservableObject {
             }
         }
         
+        // 14. Notch Drop Shelf & AirDrop Radar integration
+        FileShelfService.shared.onFilesUpdated = { [weak self] files in
+            guard let self = self else { return }
+            if files.isEmpty {
+                self.activityManager.removeActivity(id: "activity.shelf")
+            } else {
+                if let existing = self.activityManager.getActivity(id: "activity.shelf") as? FileShelfActivity {
+                    existing.files = files
+                } else {
+                    let shelfAct = FileShelfActivity(files: files)
+                    self.activityManager.presentActivity(shelfAct)
+                }
+            }
+        }
+        
         // Initial presentation of ambient weather with 3 minutes idle delay
         if isWeatherEnabled {
             scheduleAmbientWeatherPresentation(delay: 180.0)

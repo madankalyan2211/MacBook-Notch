@@ -55,6 +55,7 @@ public struct IslandView: View {
     @Namespace private var islandAnimationNamespace
     
     @State private var dragOffset: CGFloat = 0
+    @State private var isDropTargeted: Bool = false
     
     public init(controller: DynamicIslandController) {
         self.controller = controller
@@ -85,6 +86,31 @@ public struct IslandView: View {
                 // Real-time Universal Audio Reactive Waveform Visualizer
                 NotchAudioVisualizerView(width: geometry.width, height: geometry.height)
                     .clipShape(islandShape)
+                
+                // Spring-Loaded Drop Zone Overlay when dragging files to Notch
+                if isDropTargeted {
+                    islandShape
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color(red: 0.0, green: 0.8, blue: 1.0), Color(red: 0.2, green: 0.5, blue: 1.0)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            style: StrokeStyle(lineWidth: 2.5, dash: [6, 4])
+                        )
+                        .overlay(
+                            HStack(spacing: 6) {
+                                Image(systemName: "folder.fill.badge.plus")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(Color(red: 0.0, green: 0.85, blue: 1.0))
+                                Text("Drop on Shelf / AirDrop")
+                                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                            }
+                            .offset(y: 4)
+                        )
+                        .transition(.opacity)
+                }
             }
             .frame(width: geometry.width, height: geometry.height)
             .contentShape(islandShape)
@@ -94,6 +120,30 @@ public struct IslandView: View {
             }
             .onTapGesture {
                 controller.handleIslandTap()
+            }
+            .onDrop(of: [.fileURL, .url], isTargeted: $isDropTargeted) { providers in
+                var loadedURLs: [URL] = []
+                let group = DispatchGroup()
+                
+                for provider in providers {
+                    group.enter()
+                    _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                        if let url = url {
+                            loadedURLs.append(url)
+                        }
+                        group.leave()
+                    }
+                }
+                
+                group.notify(queue: .main) {
+                    if !loadedURLs.isEmpty {
+                        FileShelfService.shared.addFiles(urls: loadedURLs)
+                        let shelfAct = FileShelfActivity(files: FileShelfService.shared.files)
+                        controller.activityManager.presentActivity(shelfAct)
+                        controller.transition(to: .expanded)
+                    }
+                }
+                return true
             }
             // Multi-Activity Trackpad & Mouse Swipe Gesture
             .gesture(
