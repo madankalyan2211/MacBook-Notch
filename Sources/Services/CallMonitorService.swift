@@ -4,18 +4,33 @@ import CoreAudio
 import CoreMediaIO
 import Combine
 
-public struct CallInfo: Identifiable, Equatable {
+public enum CallState: String, Sendable {
+    case ringing = "Ringing..."
+    case connecting = "Connecting..."
+    case active = "Active"
+    case ended = "Ended"
+}
+
+public struct CallInfo: Identifiable, Equatable, Sendable {
     public let id: String
     public var callerName: String
     public var appName: String
     public var isVideo: Bool
+    public var state: CallState
     public var durationSeconds: Int
     public var isMuted: Bool
     
     public var formattedDuration: String {
-        let mins = durationSeconds / 60
-        let secs = durationSeconds % 60
-        return String(format: "%02d:%02d", mins, secs)
+        switch state {
+        case .ringing, .connecting:
+            return state.rawValue
+        case .active:
+            let mins = durationSeconds / 60
+            let secs = durationSeconds % 60
+            return String(format: "%02d:%02d", mins, secs)
+        case .ended:
+            return "Call Ended"
+        }
     }
 }
 
@@ -33,6 +48,7 @@ public final class CallMonitorService: ObservableObject {
     private var isMicActive: Bool = false
     private var callStartTime: Date?
     private var isSimulated: Bool = false
+    private var pendingRingTicks: Int = 0
     
     private init() {
         startMonitoring()
@@ -60,16 +76,20 @@ public final class CallMonitorService: ObservableObject {
         let micActive = queryMicrophoneRunningState()
         
         if micActive && !isMicActive {
-            // Call started
-            isMicActive = true
-            callStartTime = Date()
+            // Check if this is an actual calling application before triggering Call HUD
+            let detected = detectActiveCallingApp()
+            guard detected.isKnownCallApp else { return }
             
-            let detectedApp = detectActiveCallingApp()
+            isMicActive = true
+            callStartTime = nil // Duration only starts when call is answered
+            pendingRingTicks = 3 // 3 ticks (approx 3 seconds) of ringing/connecting state
+            
             let info = CallInfo(
                 id: UUID().uuidString,
-                callerName: detectedApp.appName,
-                appName: detectedApp.appName,
-                isVideo: detectedApp.isVideo,
+                callerName: detected.appName,
+                appName: detected.appName,
+                isVideo: detected.isVideo,
+                state: .ringing,
                 durationSeconds: 0,
                 isMuted: false
             )
@@ -84,6 +104,7 @@ public final class CallMonitorService: ObservableObject {
             // Call ended
             isMicActive = false
             callStartTime = nil
+            pendingRingTicks = 0
             stopDurationTracker()
             self.activeCall = nil
             
@@ -187,40 +208,59 @@ public final class CallMonitorService: ObservableObject {
         return false
     }
     
-    private func detectActiveCallingApp() -> (appName: String, isVideo: Bool) {
+    private func detectActiveCallingApp() -> (appName: String, isVideo: Bool, isKnownCallApp: Bool) {
         let isVideo = queryCameraRunningState()
         let runningApps = NSWorkspace.shared.runningApplications
         for app in runningApps {
-            let bundle = app.bundleIdentifier ?? ""
-            let name = app.localizedName ?? ""
+            let bundle = (app.bundleIdentifier ?? "").lowercased()
+            let name = (app.localizedName ?? "").lowercased()
             
-            if bundle == "com.apple.FaceTime" || name.contains("FaceTime") {
-                return (isVideo ? "FaceTime Video" : "FaceTime Audio", isVideo)
+            if bundle.contains("facetime") || name.contains("facetime") {
+                return (isVideo ? "FaceTime Video" : "FaceTime Audio", isVideo, true)
             }
-            if bundle.contains("whatsapp") || name.contains("WhatsApp") {
-                return (isVideo ? "WhatsApp Video" : "WhatsApp Call", isVideo)
+            if bundle.contains("whatsapp") || name.contains("whatsapp") {
+                return (isVideo ? "WhatsApp Video" : "WhatsApp Call", isVideo, true)
             }
             if bundle.contains("zoom") || name.contains("zoom") {
-                return (isVideo ? "Zoom Video" : "Zoom Audio", isVideo)
+                return (isVideo ? "Zoom Video" : "Zoom Audio", isVideo, true)
             }
-            if bundle.contains("teams") || name.contains("Teams") {
-                return (isVideo ? "Teams Video" : "Microsoft Teams", isVideo)
+            if bundle.contains("teams") || name.contains("teams") {
+                return (isVideo ? "Teams Video" : "Microsoft Teams", isVideo, true)
             }
-            if bundle.contains("slack") || name.contains("Slack") {
-                return (isVideo ? "Slack Video" : "Slack Huddle", isVideo)
+            if bundle.contains("slack") || name.contains("slack") {
+                return (isVideo ? "Slack Video" : "Slack Huddle", isVideo, true)
             }
-            if bundle.contains("google.Chrome") || bundle.contains("Safari") {
-                return (isVideo ? "Meet Video" : "Web Audio Call", isVideo)
+            if bundle.contains("skype") || name.contains("skype") {
+                return (isVideo ? "Skype Video" : "Skype Call", isVideo, true)
+            }
+            if bundle.contains("discord") || name.contains("discord") {
+                return (isVideo ? "Discord Video" : "Discord Voice", isVideo, true)
+            }
+            if bundle.contains("webex") || name.contains("webex") {
+                return (isVideo ? "Webex Video" : "Webex Call", isVideo, true)
             }
         }
-        return (isVideo ? "Video Call" : "Audio Call", isVideo)
+        return (isVideo ? "Video Call" : "Audio Call", isVideo, false)
     }
     
     private func startDurationTracker() {
         durationTimer?.invalidate()
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self, var call = self.activeCall else { return }
-            call.durationSeconds += 1
+            
+            if self.pendingRingTicks > 0 {
+                self.pendingRingTicks -= 1
+                if self.pendingRingTicks == 0 {
+                    // Call is now answered and active
+                    call.state = .active
+                    call.durationSeconds = 0
+                    self.callStartTime = Date()
+                }
+            } else {
+                call.state = .active
+                call.durationSeconds += 1
+            }
+            
             if !self.isSimulated {
                 call.isVideo = self.queryCameraRunningState()
             }
@@ -249,12 +289,13 @@ public final class CallMonitorService: ObservableObject {
         } else {
             // Start simulated call
             isSimulated = true
-            callStartTime = Date()
+            pendingRingTicks = 2
             let info = CallInfo(
                 id: "simulated.call",
                 callerName: "FaceTime Audio",
                 appName: "FaceTime",
                 isVideo: false,
+                state: .ringing,
                 durationSeconds: 0,
                 isMuted: false
             )
@@ -274,6 +315,7 @@ public final class CallMonitorService: ObservableObject {
     public func endCall() {
         isSimulated = false
         isMicActive = false
+        pendingRingTicks = 0
         stopDurationTracker()
         self.activeCall = nil
         self.onCallEnded?()
