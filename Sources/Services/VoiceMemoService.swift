@@ -57,21 +57,7 @@ public final class VoiceMemoService: ObservableObject {
         let apps = NSWorkspace.shared.runningApplications
         let isRunning = apps.contains { $0.bundleIdentifier == "com.apple.VoiceMemos" }
         
-        if isRunning && !isSystemVoiceMemoRunning {
-            isSystemVoiceMemoRunning = true
-            let memo = VoiceMemoInfo(
-                id: "system.voicememo",
-                title: "Voice Memo",
-                durationSeconds: 0,
-                isRecording: true,
-                isPaused: false
-            )
-            self.activeMemo = memo
-            startDurationTracker()
-            DispatchQueue.main.async { [weak self] in
-                self?.onRecordingStarted?(memo)
-            }
-        } else if !isRunning && isSystemVoiceMemoRunning {
+        if !isRunning && isSystemVoiceMemoRunning {
             isSystemVoiceMemoRunning = false
             stopDurationTracker()
             self.activeMemo = nil
