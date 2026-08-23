@@ -3,6 +3,7 @@ import Cocoa
 import CoreAudio
 import CoreMediaIO
 import Combine
+import SQLite3
 
 public enum CallState: String, Sendable {
     case ringing = "Ringing..."
@@ -62,8 +63,8 @@ public final class CallMonitorService: ObservableObject {
     public func startMonitoring() {
         pollTimer?.invalidate()
         
-        // Fast 0.5s microphone activity poller
-        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+        // Fast 0.6s microphone & window activity poller
+        let timer = Timer(timeInterval: 0.6, repeats: true) { [weak self] _ in
             self?.checkMicrophoneAndCallState()
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -81,17 +82,17 @@ public final class CallMonitorService: ObservableObject {
             guard detected.isKnownCallApp else { return }
             
             isMicActive = true
-            callStartTime = nil // Duration only starts when call is answered
-            pendingRingTicks = 3 // 3 ticks (approx 3 seconds) of ringing/connecting state
+            callStartTime = nil
+            pendingRingTicks = 2
             
             let info = CallInfo(
                 id: UUID().uuidString,
-                callerName: detected.appName,
+                callerName: detected.callerName,
                 appName: detected.appName,
                 isVideo: detected.isVideo,
                 state: .ringing,
                 durationSeconds: 0,
-                isMuted: false
+                isMuted: isSystemMicrophoneMuted()
             )
             
             self.activeCall = info
@@ -110,6 +111,20 @@ public final class CallMonitorService: ObservableObject {
             
             DispatchQueue.main.async { [weak self] in
                 self?.onCallEnded?()
+            }
+        } else if micActive && isMicActive {
+            // Update caller name and camera if updated during active call
+            if var call = activeCall {
+                let detected = detectActiveCallingApp()
+                if detected.isKnownCallApp && detected.callerName != "Audio Call" && detected.callerName != "Video Call" {
+                    if call.callerName != detected.callerName {
+                        call.callerName = detected.callerName
+                        self.activeCall = call
+                        DispatchQueue.main.async { [weak self] in
+                            self?.onCallUpdated?(call)
+                        }
+                    }
+                }
             }
         }
     }
@@ -208,39 +223,195 @@ public final class CallMonitorService: ObservableObject {
         return false
     }
     
-    private func detectActiveCallingApp() -> (appName: String, isVideo: Bool, isKnownCallApp: Bool) {
+    private func isSystemMicrophoneMuted() -> Bool {
+        var defaultInputDeviceID = AudioDeviceID(0)
+        var propertySize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &propertySize, &defaultInputDeviceID) == noErr, defaultInputDeviceID != 0 else {
+            return false
+        }
+        
+        var isMuted: UInt32 = 0
+        var muteSize = UInt32(MemoryLayout<UInt32>.size)
+        var muteAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyMute,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if AudioObjectGetPropertyData(defaultInputDeviceID, &muteAddr, 0, nil, &muteSize, &isMuted) == noErr {
+            return isMuted != 0
+        }
+        return false
+    }
+    
+    public func setSystemMicrophoneMute(isMuted: Bool) {
+        var defaultInputDeviceID = AudioDeviceID(0)
+        var propertySize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &propertySize, &defaultInputDeviceID) == noErr, defaultInputDeviceID != 0 else {
+            return
+        }
+        
+        var muteVal: UInt32 = isMuted ? 1 : 0
+        let muteSize = UInt32(MemoryLayout<UInt32>.size)
+        var muteAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyMute,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        
+        var canMute: DarwinBoolean = false
+        if AudioObjectHasProperty(defaultInputDeviceID, &muteAddr) {
+            AudioObjectIsPropertySettable(defaultInputDeviceID, &muteAddr, &canMute)
+            if canMute.boolValue {
+                AudioObjectSetPropertyData(defaultInputDeviceID, &muteAddr, 0, nil, muteSize, &muteVal)
+            }
+        }
+        
+        // Input Volume fallback scalar: 0.0 when muted, 1.0 when unmuted
+        var volAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if AudioObjectHasProperty(defaultInputDeviceID, &volAddr) {
+            var vol: Float32 = isMuted ? 0.0 : 1.0
+            let volSize = UInt32(MemoryLayout<Float32>.size)
+            AudioObjectSetPropertyData(defaultInputDeviceID, &volAddr, 0, nil, volSize, &vol)
+        }
+    }
+    
+    private func detectActiveCallingApp() -> (callerName: String, appName: String, isVideo: Bool, isKnownCallApp: Bool) {
         let isVideo = queryCameraRunningState()
+        
+        // 1. Inspect on-screen window titles for calling applications
+        if let winInfo = getActiveCallWindowTitle(isVideo: isVideo) {
+            return (winInfo.callerName, winInfo.appName, winInfo.isVideo, true)
+        }
+        
+        // 2. Check running applications list
         let runningApps = NSWorkspace.shared.runningApplications
         for app in runningApps {
             let bundle = (app.bundleIdentifier ?? "").lowercased()
             let name = (app.localizedName ?? "").lowercased()
             
-            if bundle.contains("facetime") || name.contains("facetime") {
-                return (isVideo ? "FaceTime Video" : "FaceTime Audio", isVideo, true)
-            }
             if bundle.contains("whatsapp") || name.contains("whatsapp") {
-                return (isVideo ? "WhatsApp Video" : "WhatsApp Call", isVideo, true)
+                let partner = getLastWhatsAppPartnerName() ?? "WhatsApp Contact"
+                return (partner, isVideo ? "WhatsApp Video" : "WhatsApp Call", isVideo, true)
+            }
+            if bundle.contains("facetime") || name.contains("facetime") {
+                return ("FaceTime", isVideo ? "FaceTime Video" : "FaceTime Audio", isVideo, true)
             }
             if bundle.contains("zoom") || name.contains("zoom") {
-                return (isVideo ? "Zoom Video" : "Zoom Audio", isVideo, true)
+                return ("Zoom Meeting", isVideo ? "Zoom Video" : "Zoom Audio", isVideo, true)
             }
             if bundle.contains("teams") || name.contains("teams") {
-                return (isVideo ? "Teams Video" : "Microsoft Teams", isVideo, true)
+                return ("Microsoft Teams", isVideo ? "Teams Video" : "Teams Call", isVideo, true)
             }
             if bundle.contains("slack") || name.contains("slack") {
-                return (isVideo ? "Slack Video" : "Slack Huddle", isVideo, true)
-            }
-            if bundle.contains("skype") || name.contains("skype") {
-                return (isVideo ? "Skype Video" : "Skype Call", isVideo, true)
+                return ("Slack Huddle", isVideo ? "Slack Video" : "Slack Huddle", isVideo, true)
             }
             if bundle.contains("discord") || name.contains("discord") {
-                return (isVideo ? "Discord Video" : "Discord Voice", isVideo, true)
-            }
-            if bundle.contains("webex") || name.contains("webex") {
-                return (isVideo ? "Webex Video" : "Webex Call", isVideo, true)
+                return ("Discord Voice", isVideo ? "Discord Video" : "Discord Voice", isVideo, true)
             }
         }
-        return (isVideo ? "Video Call" : "Audio Call", isVideo, false)
+        
+        return ("Audio Call", "Audio Call", isVideo, false)
+    }
+    
+    private func getActiveCallWindowTitle(isVideo: Bool) -> (callerName: String, appName: String, isVideo: Bool)? {
+        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        
+        for win in windowList {
+            let ownerName = (win[kCGWindowOwnerName as String] as? String) ?? ""
+            let winTitle = (win[kCGWindowName as String] as? String) ?? ""
+            let ownerLower = ownerName.lowercased()
+            let titleLower = winTitle.lowercased()
+            
+            if ownerLower.contains("whatsapp") {
+                var caller = winTitle.replacingOccurrences(of: "WhatsApp Call with ", with: "")
+                    .replacingOccurrences(of: "WhatsApp Call", with: "")
+                    .replacingOccurrences(of: "WhatsApp - ", with: "")
+                    .replacingOccurrences(of: "WhatsApp", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if caller.isEmpty { caller = getLastWhatsAppPartnerName() ?? "WhatsApp Contact" }
+                return (caller, isVideo ? "WhatsApp Video" : "WhatsApp Call", isVideo)
+            }
+            if ownerLower.contains("facetime") {
+                var caller = winTitle.replacingOccurrences(of: "FaceTime with ", with: "")
+                    .replacingOccurrences(of: "FaceTime - ", with: "")
+                    .replacingOccurrences(of: "FaceTime", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if caller.isEmpty { caller = "FaceTime Call" }
+                return (caller, isVideo ? "FaceTime Video" : "FaceTime Audio", isVideo)
+            }
+            if ownerLower.contains("zoom") {
+                var caller = winTitle.replacingOccurrences(of: "Zoom Meeting - ", with: "")
+                    .replacingOccurrences(of: "Zoom Meeting", with: "")
+                    .replacingOccurrences(of: "Zoom", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if caller.isEmpty { caller = "Zoom Meeting" }
+                return (caller, isVideo ? "Zoom Video" : "Zoom Audio", isVideo)
+            }
+            if ownerLower.contains("teams") {
+                var caller = winTitle.replacingOccurrences(of: "Microsoft Teams - ", with: "")
+                    .replacingOccurrences(of: "Microsoft Teams", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if caller.isEmpty { caller = "Microsoft Teams" }
+                return (caller, isVideo ? "Teams Video" : "Teams Call", isVideo)
+            }
+            if ownerLower.contains("slack") && (titleLower.contains("huddle") || titleLower.contains("call")) {
+                return (winTitle.isEmpty ? "Slack Huddle" : winTitle, isVideo ? "Slack Video" : "Slack Huddle", isVideo)
+            }
+            if (ownerLower.contains("chrome") || ownerLower.contains("safari")) && (titleLower.contains("meet.google.com") || titleLower.contains("meet - ") || titleLower.contains("google meet")) {
+                let caller = winTitle.replacingOccurrences(of: " - Google Chrome", with: "")
+                    .replacingOccurrences(of: " - Google Meet", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return (caller.isEmpty ? "Google Meet" : caller, isVideo ? "Meet Video" : "Google Meet", isVideo)
+            }
+        }
+        return nil
+    }
+    
+    private func getLastWhatsAppPartnerName() -> String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let dbPath = "\(home)/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite"
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            sqlite3_close(db)
+            return nil
+        }
+        defer { sqlite3_close(db) }
+        
+        let query = """
+        SELECT COALESCE(NULLIF(s.ZPARTNERNAME, ''), p.ZPUSHNAME, s.ZCONTACTJID)
+        FROM ZWAMESSAGE m
+        LEFT JOIN ZWACHATSESSION s ON m.ZCHATSESSION = s.Z_PK
+        LEFT JOIN ZWAPROFILEPUSHNAME p ON (m.ZFROMJID = p.ZJID OR s.ZCONTACTJID = p.ZJID)
+        WHERE m.ZISFROMME = 0
+        ORDER BY m.Z_PK DESC LIMIT 1;
+        """
+        var stmt: OpaquePointer?
+        var result: String?
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let str = sqlite3_column_text(stmt, 0) {
+                    result = String(cString: str)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
     }
     
     private func startDurationTracker() {
@@ -263,6 +434,7 @@ public final class CallMonitorService: ObservableObject {
             
             if !self.isSimulated {
                 call.isVideo = self.queryCameraRunningState()
+                call.isMuted = self.isSystemMicrophoneMuted()
             }
             self.activeCall = call
             DispatchQueue.main.async {
@@ -292,8 +464,8 @@ public final class CallMonitorService: ObservableObject {
             pendingRingTicks = 2
             let info = CallInfo(
                 id: "simulated.call",
-                callerName: "FaceTime Audio",
-                appName: "FaceTime",
+                callerName: "Vishnusai Sai",
+                appName: "WhatsApp Call",
                 isVideo: false,
                 state: .ringing,
                 durationSeconds: 0,
@@ -308,14 +480,18 @@ public final class CallMonitorService: ObservableObject {
     public func toggleMute() {
         guard var call = activeCall else { return }
         call.isMuted.toggle()
+        setSystemMicrophoneMute(isMuted: call.isMuted)
         self.activeCall = call
-        self.onCallUpdated?(call)
+        DispatchQueue.main.async { [weak self] in
+            self?.onCallUpdated?(call)
+        }
     }
     
     public func endCall() {
         isSimulated = false
         isMicActive = false
         pendingRingTicks = 0
+        setSystemMicrophoneMute(isMuted: false)
         stopDurationTracker()
         self.activeCall = nil
         self.onCallEnded?()
