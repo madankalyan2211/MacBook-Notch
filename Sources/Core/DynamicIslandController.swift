@@ -34,6 +34,7 @@ public final class DynamicIslandController: ObservableObject {
     @Published public var isNativeHUDSuppressionEnabled: Bool = true
     
     private var autoCollapseTimer: Timer?
+    private var idleWeatherTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     
     public init() {
@@ -55,7 +56,11 @@ public final class DynamicIslandController: ObservableObject {
         activityManager.onActivityChanged = { [weak self] oldAct, newAct in
             guard let self = self else { return }
             self.activeActivity = newAct
-            if newAct != nil {
+            if let newAct = newAct {
+                if newAct.type != .weather {
+                    self.idleWeatherTimer?.invalidate()
+                    self.idleWeatherTimer = nil
+                }
                 if self.state == .idle || self.state == .peek {
                     self.transition(to: .compact)
                 } else if (oldAct is HelloSignatureActivity || oldAct is ClipboardActivity) && (self.state == .expanded) {
@@ -69,6 +74,8 @@ public final class DynamicIslandController: ObservableObject {
                 if self.state != .idle {
                     self.transition(to: .idle)
                 }
+                // Wait 3.0s of sustained idle time before showing ambient weather
+                self.scheduleAmbientWeatherPresentation(delay: 3.0)
             }
         }
         
@@ -521,17 +528,41 @@ public final class DynamicIslandController: ObservableObject {
             guard let self = self, self.isWeatherEnabled else { return }
             if let existing = self.activityManager.getActivity(id: "activity.weather") as? WeatherActivity {
                 existing.weather = weather
-            } else {
-                let weatherAct = WeatherActivity(weather: weather)
-                self.activityManager.presentActivity(weatherAct)
             }
         }
         
-        // Initial presentation of ambient weather if enabled
+        // Initial presentation of ambient weather with 3.0s idle delay
         if isWeatherEnabled {
-            let weatherAct = WeatherActivity(weather: WeatherService.shared.currentWeather)
-            self.activityManager.presentActivity(weatherAct)
+            scheduleAmbientWeatherPresentation(delay: 3.0)
         }
+    }
+    
+    /// Schedules ambient weather presentation after a sustained idle period (3.0s)
+    public func scheduleAmbientWeatherPresentation(delay: TimeInterval = 3.0) {
+        idleWeatherTimer?.invalidate()
+        idleWeatherTimer = nil
+        
+        guard isWeatherEnabled else { return }
+        guard !activityManager.activityStack.contains(where: { $0.type != .weather }) else { return }
+        
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            guard let self = self, self.isWeatherEnabled else { return }
+            // Double check that we are still genuinely idle
+            guard !self.activityManager.activityStack.contains(where: { $0.type != .weather }) else { return }
+            
+            let weatherAct: WeatherActivity
+            if let existing = self.activityManager.getActivity(id: "activity.weather") as? WeatherActivity {
+                weatherAct = existing
+            } else {
+                weatherAct = WeatherActivity(weather: WeatherService.shared.currentWeather)
+            }
+            self.activityManager.presentActivity(weatherAct)
+            if self.state == .idle || self.state == .peek {
+                self.transition(to: .compact)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.idleWeatherTimer = timer
     }
     
     // MARK: - State Transitions
