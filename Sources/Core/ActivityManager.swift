@@ -18,16 +18,16 @@ public final class ActivityManager: ObservableObject {
         return activityStack.first(where: { $0.id == id })
     }
     
-    /// The secondary concurrent activity displayed in the detached bubble (strictly for persistent tasks like Music and Timers)
+    /// The secondary concurrent activity displayed in the detached bubble (strictly for persistent tasks like Music, Timers, Calls, Voice Memos)
     public var secondaryActivity: (any DynamicIslandActivity)? {
-        // If current active activity is a temporary HUD (Volume, Brightness, Battery, Clipboard, Focus), suppress secondary bubble
-        if let current = activeActivity, current.priority == .critical || current.type == .volume || current.type == .brightness || current.type == .battery || current.type == .clipboard || current.id == "activity.focus" {
+        // If current active activity is a temporary HUD or Weather, suppress secondary bubble
+        if let current = activeActivity, current.priority == .critical || current.type == .volume || current.type == .brightness || current.type == .battery || current.type == .clipboard || current.type == .weather || current.id == "activity.focus" {
             return nil
         }
         
-        // Filter stack for persistent multi-activity candidates only (Music, Timer, Downloads, AI)
+        // Filter stack for persistent multi-activity candidates only (Music, Timer, Calls, Voice Memos, Downloads)
         let eligibleStack = activityStack.filter {
-            $0.type != .volume && $0.type != .brightness && $0.type != .battery && $0.type != .clipboard && $0.id != "activity.focus"
+            $0.type != .volume && $0.type != .brightness && $0.type != .battery && $0.type != .clipboard && $0.type != .weather && $0.id != "activity.focus" && $0.id != "hud.capslock" && $0.id != "hud.lock" && $0.id != "activity.caffeine"
         }
         
         guard eligibleStack.count > 1 else { return nil }
@@ -37,6 +37,19 @@ public final class ActivityManager: ObservableObject {
             return eligibleStack[nextIdx]
         }
         return eligibleStack.count > 1 ? eligibleStack[1] : nil
+    }
+    
+    /// Determines the correct foreground activity, ensuring Weather is ONLY shown when truly idle
+    public func resolveActiveActivity() -> (any DynamicIslandActivity)? {
+        let nonWeather = activityStack.filter { $0.type != .weather }
+        if !nonWeather.isEmpty {
+            if let current = activeActivity, let match = nonWeather.first(where: { $0.id == current.id }) {
+                return match
+            }
+            return nonWeather.first
+        } else {
+            return activityStack.first(where: { $0.type == .weather })
+        }
     }
     
     /// Presents or queues an activity according to priority.
@@ -54,21 +67,24 @@ public final class ActivityManager: ObservableObject {
         activityStack.append(activity)
         activityStack.sort { $0.priority > $1.priority }
         
-        // If the newly presented activity has equal or higher priority than previous, make it active
-        if let previous = previousActive {
-            if activity.priority >= previous.priority {
-                self.currentIndex = activityStack.firstIndex(where: { $0.id == activity.id }) ?? 0
+        // Resolve new active activity (Weather is strictly suppressed if any non-weather activity exists)
+        let newActive: (any DynamicIslandActivity)?
+        if activity.type != .weather {
+            if let previous = previousActive, previous.priority > activity.priority {
+                newActive = previous
             } else {
-                // Keep the higher-priority active activity in foreground
-                self.currentIndex = activityStack.firstIndex(where: { $0.id == previous.id }) ?? 0
+                newActive = activity
             }
         } else {
-            self.currentIndex = activityStack.firstIndex(where: { $0.id == activity.id }) ?? 0
+            newActive = resolveActiveActivity()
         }
         
-        let newActive = activityStack.indices.contains(currentIndex) ? activityStack[currentIndex] : activityStack.first
-        
         self.activeActivity = newActive
+        if let newActive = newActive, let idx = activityStack.firstIndex(where: { $0.id == newActive.id }) {
+            self.currentIndex = idx
+        }
+        self.objectWillChange.send()
+        
         if previousActive?.id != newActive?.id {
             self.onActivityChanged?(previousActive, newActive)
         }
@@ -90,6 +106,7 @@ public final class ActivityManager: ObservableObject {
         self.currentIndex = idx
         let newActive = activityStack[idx]
         self.activeActivity = newActive
+        self.objectWillChange.send()
         if previousActive?.id != newActive.id {
             self.onActivityChanged?(previousActive, newActive)
         }
@@ -128,26 +145,42 @@ public final class ActivityManager: ObservableObject {
         timeoutTimers[activity.id] = switchTimer
     }
     
-    /// Cycles to the next live activity in the stack (Swipe Left).
+    /// Cycles to the next live activity in the stack (Swipe Left / Tap Bubble).
     public func cycleNext() {
-        guard activityStack.count > 1 else { return }
+        let eligible = activityStack.filter { $0.type != .weather }
+        guard eligible.count > 1 else { return }
         let previousActive = activeActivity
-        currentIndex = (currentIndex + 1) % activityStack.count
-        let newActive = activityStack[currentIndex]
+        let currentEligibleIdx = eligible.firstIndex(where: { $0.id == previousActive?.id }) ?? 0
+        let nextIdx = (currentEligibleIdx + 1) % eligible.count
+        let newActive = eligible[nextIdx]
         
         self.activeActivity = newActive
-        self.onActivityChanged?(previousActive, newActive)
+        if let stackIdx = activityStack.firstIndex(where: { $0.id == newActive.id }) {
+            self.currentIndex = stackIdx
+        }
+        self.objectWillChange.send()
+        if previousActive?.id != newActive.id {
+            self.onActivityChanged?(previousActive, newActive)
+        }
     }
     
     /// Cycles to the previous live activity in the stack (Swipe Right).
     public func cyclePrevious() {
-        guard activityStack.count > 1 else { return }
+        let eligible = activityStack.filter { $0.type != .weather }
+        guard eligible.count > 1 else { return }
         let previousActive = activeActivity
-        currentIndex = (currentIndex - 1 + activityStack.count) % activityStack.count
-        let newActive = activityStack[currentIndex]
+        let currentEligibleIdx = eligible.firstIndex(where: { $0.id == previousActive?.id }) ?? 0
+        let prevIdx = (currentEligibleIdx - 1 + eligible.count) % eligible.count
+        let newActive = eligible[prevIdx]
         
         self.activeActivity = newActive
-        self.onActivityChanged?(previousActive, newActive)
+        if let stackIdx = activityStack.firstIndex(where: { $0.id == newActive.id }) {
+            self.currentIndex = stackIdx
+        }
+        self.objectWillChange.send()
+        if previousActive?.id != newActive.id {
+            self.onActivityChanged?(previousActive, newActive)
+        }
     }
     
     /// Removes an activity from the active stack and gracefully resumes previous activity.
@@ -158,13 +191,13 @@ public final class ActivityManager: ObservableObject {
         let previousActive = activeActivity
         activityStack.removeAll { $0.id == id }
         
-        if currentIndex >= activityStack.count {
-            currentIndex = max(0, activityStack.count - 1)
-        }
-        
-        let newActive = activityStack.indices.contains(currentIndex) ? activityStack[currentIndex] : nil
-        
+        let newActive = resolveActiveActivity()
         self.activeActivity = newActive
+        if let newActive = newActive, let idx = activityStack.firstIndex(where: { $0.id == newActive.id }) {
+            self.currentIndex = idx
+        } else {
+            self.currentIndex = 0
+        }
         self.objectWillChange.send()
         
         if previousActive?.id != newActive?.id {
