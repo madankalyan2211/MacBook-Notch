@@ -15,7 +15,7 @@ public final class FileShelfActivity: DynamicIslandActivity, ObservableObject {
     public var tintColor: Color { Color(red: 0.0, green: 0.75, blue: 1.0) }
     public var progress: Double? { nil }
     
-    public var compactPreferredWidth: CGFloat { 325 }
+    public var compactPreferredWidth: CGFloat { 355 }
     public var expandedPreferredSize: CGSize { CGSize(width: 395, height: 165) }
     
     public init(files: [ShelvedFileItem] = []) {
@@ -63,9 +63,10 @@ public struct ShelfCompactLeadingView: View {
                 .foregroundColor(activity.tintColor)
             
             Text("\(shelfService.files.count) \(shelfService.files.count == 1 ? "File" : "Files")")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
                 .foregroundColor(.white)
                 .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.leading, 8)
         .matchedGeometryIfAvailable(id: "shelf_leading_\(activity.id)", in: namespace)
@@ -77,14 +78,16 @@ public struct ShelfCompactTrailingView: View {
     public let namespace: Namespace.ID?
     
     public var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Image(systemName: "airdrop")
                 .font(.system(size: 12.5, weight: .bold))
                 .foregroundColor(activity.tintColor)
             
             Text("Shelf")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.system(size: 12.5, weight: .bold, design: .rounded))
                 .foregroundColor(activity.tintColor)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.trailing, 8)
         .matchedGeometryIfAvailable(id: "shelf_trailing_\(activity.id)", in: namespace)
