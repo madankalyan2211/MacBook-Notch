@@ -56,8 +56,8 @@ public struct WeatherData: Sendable {
     }
 }
 
-/// Service managing ambient live weather & air quality telemetry
-public final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegate {
+/// Service managing ambient live weather & air quality telemetry via silent zero-permission IP geolocation
+public final class WeatherService: ObservableObject {
     public static let shared = WeatherService()
     
     @Published public private(set) var currentWeather: WeatherData = .fallback
@@ -70,13 +70,11 @@ public final class WeatherService: NSObject, ObservableObject, CLLocationManager
     
     public var onWeatherUpdated: ((WeatherData) -> Void)?
     
-    private var locationManager: CLLocationManager?
     private var currentCoords: (lat: Double, lon: Double) = (37.7749, -122.4194)
     private var currentCityName: String = "San Francisco"
     private var refreshTimer: Timer?
     
-    private override init() {
-        super.init()
+    private init() {
         let storedF = UserDefaults.standard.object(forKey: "macbooknotch.weather.isFahrenheit") as? Bool ?? true
         self.isFahrenheit = storedF
         
@@ -89,13 +87,7 @@ public final class WeatherService: NSObject, ObservableObject, CLLocationManager
     }
     
     private func setupLocationAndFetch() {
-        locationManager = CLLocationManager()
-        locationManager?.delegate = self
-        locationManager?.desiredAccuracy = kCLLocationAccuracyKilometer
-        locationManager?.requestWhenInUseAuthorization()
-        locationManager?.startUpdatingLocation()
-        
-        // Immediate IP geolocation for instant zero-permission accurate city & coords
+        // Immediate silent IP geolocation for zero-permission accurate city & coords
         fetchIPLocation()
         
         // Initial fetch
@@ -117,22 +109,6 @@ public final class WeatherService: NSObject, ObservableObject, CLLocationManager
                 }
             }
         }.resume()
-    }
-    
-    public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let loc = locations.last else { return }
-        self.currentCoords = (lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
-        
-        // Reverse geocode to get city name
-        let geocoder = CLGeocoder()
-        geocoder.reverseGeocodeLocation(loc) { [weak self] placemarks, _ in
-            if let city = placemarks?.first?.locality ?? placemarks?.first?.name {
-                self?.currentCityName = city
-            }
-            self?.fetchWeather()
-        }
-        
-        manager.stopUpdatingLocation()
     }
     
     public func fetchWeather() {
