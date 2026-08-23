@@ -143,8 +143,8 @@ public final class AnimationEngine {
             let targetWidth = max(baseCompactWidth, activityWidth)
             return IslandGeometry(
                 width: targetWidth,
-                height: max(baseNotchHeight + 1.5, 31.5),
-                cornerRadius: 12.5,
+                height: max(baseNotchHeight + 1.0, 31.0),
+                cornerRadius: 12.0,
                 topOffset: 0,
                 horizontalPadding: 8,
                 verticalPadding: 2
