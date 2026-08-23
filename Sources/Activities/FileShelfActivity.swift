@@ -97,7 +97,7 @@ public struct ShelfExpandedCardView: View {
     
     public var body: some View {
         VStack(spacing: 9) {
-            // Header Row: Title, File count, and Clear button
+            // Header Row: Title, File count, Clear button & X Close button
             HStack {
                 HStack(spacing: 7) {
                     Image(systemName: "folder.fill.badge.plus")
@@ -115,19 +115,34 @@ public struct ShelfExpandedCardView: View {
                 
                 Spacer()
                 
-                Button(action: {
-                    shelfService.clearAll()
-                    controller.activityManager.removeActivity(id: activity.id)
-                }) {
-                    Text("Clear Shelf")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.65))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.1))
-                        .clipShape(Capsule())
+                HStack(spacing: 8) {
+                    Button(action: {
+                        shelfService.clearAll()
+                        controller.activityManager.removeActivity(id: activity.id)
+                        controller.transition(to: .idle)
+                    }) {
+                        Text("Clear Shelf")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.65))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.white.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Direct "X" Close Button
+                    Button(action: {
+                        controller.transition(to: .compact)
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.6))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 4)
             
@@ -237,8 +252,10 @@ private struct ShelvedFileCard: View {
                     FileShelfService.shared.airDropSingleFile(url: file.url)
                 }) {
                     Image(systemName: "airdrop")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9.5, weight: .bold))
                         .foregroundColor(Color(red: 0.0, green: 0.75, blue: 1.0))
+                        .frame(width: 16, height: 14)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 
@@ -246,17 +263,22 @@ private struct ShelvedFileCard: View {
                     FileShelfService.shared.revealInFinder(url: file.url)
                 }) {
                     Image(systemName: "arrow.up.forward.square")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9.5, weight: .semibold))
                         .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 16, height: 14)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 
+                // Remove File "X" Button
                 Button(action: {
                     FileShelfService.shared.removeFile(id: file.id)
                 }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.4))
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.65))
+                        .frame(width: 16, height: 14)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }

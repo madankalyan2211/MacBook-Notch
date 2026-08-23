@@ -382,10 +382,16 @@ public final class WindowManager: ObservableObject {
         let isInside = activeRect.contains(mouseLoc)
         
         if isInside {
+            if window.ignoresMouseEvents {
+                window.ignoresMouseEvents = false
+            }
             if !controller.isHovered && controller.state == .idle {
                 controller.handleHover(isHovering: true)
             }
         } else {
+            if !window.ignoresMouseEvents {
+                window.ignoresMouseEvents = true
+            }
             if controller.isHovered && controller.state == .peek {
                 controller.handleHover(isHovering: false)
             }
