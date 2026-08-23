@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import Combine
 
-/// Manages the lifecycle, dynamic resizing, and positioning of the floating Dynamic Island window and Menu Bar icon.
+@MainActor
 public final class WindowManager: ObservableObject {
     public static let shared = WindowManager()
     

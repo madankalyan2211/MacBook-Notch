@@ -1,10 +1,33 @@
 import AppKit
 import SwiftUI
 
-/// Custom content hosting view that fits the Dynamic Island window exactly and captures trackpad swipes.
+/// Custom content hosting view that fits the Dynamic Island window exactly and captures trackpad swipes & drag-and-drop.
 public final class DynamicIslandHostingView<Content: View>: NSHostingView<Content> {
     private var trackingArea: NSTrackingArea?
     private var lastScrollTime: Date = Date.distantPast
+    
+    @MainActor public required init(rootView: Content) {
+        super.init(rootView: rootView)
+        setupDragRegistration()
+    }
+    
+    @MainActor required dynamic init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupDragRegistration()
+    }
+    
+    private func setupDragRegistration() {
+        registerForDraggedTypes([
+            .fileURL,
+            .URL,
+            .string,
+            .fileContents,
+            NSPasteboard.PasteboardType("public.file-url"),
+            NSPasteboard.PasteboardType("public.url"),
+            NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+            NSPasteboard.PasteboardType("com.apple.pasteboard.promised-file-url")
+        ])
+    }
     
     public override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -24,19 +47,18 @@ public final class DynamicIslandHostingView<Content: View>: NSHostingView<Conten
     
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        registerForDraggedTypes([
-            .fileURL,
-            .URL,
-            NSPasteboard.PasteboardType("public.file-url"),
-            NSPasteboard.PasteboardType("public.url"),
-            .string
-        ])
+        setupDragRegistration()
     }
     
     // MARK: - NSDraggingDestination
     public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         let pasteboard = sender.draggingPasteboard
-        if pasteboard.canReadObject(forClasses: [NSURL.self], options: nil) {
+        let urls = extractURLs(from: pasteboard)
+        let hasFileTypes = pasteboard.types?.contains(.fileURL) == true ||
+                           pasteboard.types?.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) == true ||
+                           pasteboard.types?.contains(NSPasteboard.PasteboardType("public.file-url")) == true
+        
+        if !urls.isEmpty || hasFileTypes {
             DispatchQueue.main.async {
                 FileShelfService.shared.isDropTargeted = true
                 if DynamicIslandController.shared.state == .idle {
@@ -50,7 +72,12 @@ public final class DynamicIslandHostingView<Content: View>: NSHostingView<Conten
     
     public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         let pasteboard = sender.draggingPasteboard
-        if pasteboard.canReadObject(forClasses: [NSURL.self], options: nil) {
+        let urls = extractURLs(from: pasteboard)
+        let hasFileTypes = pasteboard.types?.contains(.fileURL) == true ||
+                           pasteboard.types?.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) == true ||
+                           pasteboard.types?.contains(NSPasteboard.PasteboardType("public.file-url")) == true
+        
+        if !urls.isEmpty || hasFileTypes {
             if !FileShelfService.shared.isDropTargeted {
                 DispatchQueue.main.async {
                     FileShelfService.shared.isDropTargeted = true
@@ -72,8 +99,9 @@ public final class DynamicIslandHostingView<Content: View>: NSHostingView<Conten
             FileShelfService.shared.isDropTargeted = false
         }
         let pasteboard = sender.draggingPasteboard
+        let urls = extractURLs(from: pasteboard)
         
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+        if !urls.isEmpty {
             DispatchQueue.main.async {
                 FileShelfService.shared.addFiles(urls: urls)
                 let shelfAct = FileShelfActivity(files: FileShelfService.shared.files)
@@ -83,6 +111,17 @@ public final class DynamicIslandHostingView<Content: View>: NSHostingView<Conten
             return true
         }
         return false
+    }
+    
+    private func extractURLs(from pasteboard: NSPasteboard) -> [URL] {
+        var results: [URL] = []
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+            results.append(contentsOf: urls)
+        }
+        if results.isEmpty, let filenames = pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String] {
+            results.append(contentsOf: filenames.map { URL(fileURLWithPath: $0) })
+        }
+        return results
     }
     
     // Precise shape hit testing: passes clicks through to desktop & underlying apps
@@ -95,20 +134,20 @@ public final class DynamicIslandHostingView<Content: View>: NSHostingView<Conten
         // View bounds: width = bounds.width, height = bounds.height
         // Island is attached flush to the top edge (y = bounds.height)
         let topY = bounds.height
-        let bottomY = topY - max(geometry.height, 30.5) - 15 // cushion for hover / click / drop
+        let bottomY = topY - max(geometry.height, 30.5) - 20 // cushion for hover / click / drop
         
         let mainWidth = max(geometry.width, 160)
         let hasSecondary = (controller.state == .compact && controller.activityManager.secondaryActivity != nil)
         let bubbleExtraRight: CGFloat = hasSecondary ? (geometry.height + 30.0) : 0
         
         // Main island is centered at bounds.width / 2.0
-        let minX = (bounds.width - mainWidth) / 2.0 - 15
-        let maxX = (bounds.width + mainWidth) / 2.0 + bubbleExtraRight + 15
+        let minX = (bounds.width - mainWidth) / 2.0 - 20
+        let maxX = (bounds.width + mainWidth) / 2.0 + bubbleExtraRight + 20
         
-        let activeRect = NSRect(x: minX, y: bottomY, width: maxX - minX, height: topY - bottomY + 15)
+        let activeRect = NSRect(x: minX, y: bottomY, width: maxX - minX, height: topY - bottomY + 20)
         
         if activeRect.contains(point) {
-            return super.hitTest(point)
+            return super.hitTest(point) ?? self
         }
         
         return nil
@@ -144,7 +183,7 @@ public final class DynamicIslandWindow: NSPanel {
         )
         
         self.isFloatingPanel = true
-        self.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.screenSaverWindow)) + 1)
+        self.level = .statusBar
         self.collectionBehavior = [
             .canJoinAllSpaces,
             .fullScreenAuxiliary,
@@ -163,9 +202,12 @@ public final class DynamicIslandWindow: NSPanel {
         registerForDraggedTypes([
             .fileURL,
             .URL,
+            .string,
+            .fileContents,
             NSPasteboard.PasteboardType("public.file-url"),
             NSPasteboard.PasteboardType("public.url"),
-            .string
+            NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+            NSPasteboard.PasteboardType("com.apple.pasteboard.promised-file-url")
         ])
     }
     
