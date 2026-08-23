@@ -15,7 +15,13 @@ public final class WeatherActivity: DynamicIslandActivity, ObservableObject {
     public var tintColor: Color { weather.tintColor }
     public var progress: Double? { nil }
     
-    public var compactPreferredWidth: CGFloat { 330 }
+    public var compactPreferredWidth: CGFloat {
+        // Dynamically compute width to perfectly fit any city name
+        let nameCount = max(1, weather.cityName.count)
+        let nameWidth = CGFloat(nameCount) * 8.2 + 28.0
+        let wingWidth = max(55.0, nameWidth)
+        return max(320.0, 185.0 + (wingWidth * 2.0))
+    }
     public var expandedPreferredSize: CGSize { CGSize(width: 385, height: 145) }
     
     public init(id: String = "activity.weather", weather: WeatherData = .fallback) {
@@ -76,19 +82,13 @@ public struct WeatherCompactTrailingView: View {
     public let namespace: Namespace.ID?
     
     public var body: some View {
-        HStack(spacing: 5) {
-            Text("\(activity.weather.temperature)°")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundColor(activity.weather.tintColor)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            
-            Circle()
-                .fill(activity.weather.aqiColor)
-                .frame(width: 5, height: 5)
-        }
-        .padding(.trailing, 8)
-        .matchedGeometryIfAvailable(id: "weather_temp_\(activity.id)", in: namespace)
+        Text("\(activity.weather.temperature)°")
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .foregroundColor(activity.weather.tintColor)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.trailing, 8)
+            .matchedGeometryIfAvailable(id: "weather_temp_\(activity.id)", in: namespace)
     }
 }
 
