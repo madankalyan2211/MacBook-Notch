@@ -549,7 +549,7 @@ public final class DynamicIslandController: ObservableObject {
         WhatsAppNotificationService.shared.onMessageReceived = { [weak self] message in
             guard let self = self else { return }
             let waAct = WhatsAppNotificationActivity(message: message)
-            self.activityManager.presentActivity(waAct)
+            self.activityManager.promoteTemporarily(activity: waAct, duration: 6.5, fallbackId: nil)
             self.transition(to: .compact)
         }
         

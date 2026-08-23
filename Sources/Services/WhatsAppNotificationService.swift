@@ -1,6 +1,7 @@
 import Foundation
 import Cocoa
 import Combine
+import SQLite3
 
 public struct WhatsAppMessage: Identifiable, Equatable, Sendable {
     public let id: String
@@ -33,7 +34,7 @@ public struct WhatsAppMessage: Identifiable, Equatable, Sendable {
     }
 }
 
-/// Service managing incoming WhatsApp notifications and desktop deep linking
+/// Service managing live incoming WhatsApp notifications from native WhatsApp SQLite and deep linking
 public final class WhatsAppNotificationService: ObservableObject {
     public static let shared = WhatsAppNotificationService()
     
@@ -48,7 +49,15 @@ public final class WhatsAppNotificationService: ObservableObject {
     public var onMessageDismissed: (() -> Void)?
     
     private var dismissTimer: Timer?
+    private var dbPollTimer: Timer?
+    private var dbFileSource: DispatchSourceFileSystemObject?
+    private var lastMaxPK: Int64 = 0
     private var sampleIndex: Int = 0
+    
+    private let dbPath: String = {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return "\(home)/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite"
+    }()
     
     private let sampleMessages: [(sender: String, text: String, isGroup: Bool, group: String?)] = [
         ("Sarah Jenkins", "Hey! Are you free for a quick call? ☕️", false, nil),
@@ -60,6 +69,100 @@ public final class WhatsAppNotificationService: ObservableObject {
     
     private init() {
         self.isEnabled = UserDefaults.standard.object(forKey: "macbooknotch.whatsapp.enabled") as? Bool ?? true
+        initializeLastMaxPK()
+        startLiveMonitoring()
+    }
+    
+    private func initializeLastMaxPK() {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            sqlite3_close(db)
+            return
+        }
+        defer { sqlite3_close(db) }
+        
+        let query = "SELECT MAX(Z_PK) FROM ZWAMESSAGE;"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                self.lastMaxPK = sqlite3_column_int64(stmt, 0)
+            }
+        }
+        sqlite3_finalize(stmt)
+    }
+    
+    private func startLiveMonitoring() {
+        // Fast 1-second poller to capture new WhatsApp messages
+        dbPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.checkForNewWhatsAppMessages()
+        }
+        
+        // File descriptor monitoring on WhatsApp shared container
+        let walPath = "\(dbPath)-wal"
+        let targetPath = FileManager.default.fileExists(atPath: walPath) ? walPath : dbPath
+        let fd = open(targetPath, O_EVTONLY)
+        if fd >= 0 {
+            let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .extend, .attrib], queue: .main)
+            src.setEventHandler { [weak self] in
+                self?.checkForNewWhatsAppMessages()
+            }
+            src.setCancelHandler {
+                close(fd)
+            }
+            src.resume()
+            self.dbFileSource = src
+        }
+    }
+    
+    public func checkForNewWhatsAppMessages() {
+        guard isEnabled else { return }
+        
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            sqlite3_close(db)
+            return
+        }
+        defer { sqlite3_close(db) }
+        
+        let query = """
+        SELECT m.Z_PK, IFNULL(s.ZPARTNERNAME, m.ZPUSHNAME), m.ZTEXT, s.ZSESSIONTYPE
+        FROM ZWAMESSAGE m
+        LEFT JOIN ZWACHATSESSION s ON m.ZCHATSESSION = s.Z_PK
+        WHERE m.ZISFROMME = 0 AND m.Z_PK > ?
+        ORDER BY m.Z_PK ASC;
+        """
+        
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else {
+            sqlite3_finalize(stmt)
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+        
+        sqlite3_bind_int64(stmt, 1, lastMaxPK)
+        
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let pk = sqlite3_column_int64(stmt, 0)
+            let sender = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? "WhatsApp"
+            let text = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? "New Message"
+            let sessionType = sqlite3_column_int(stmt, 3)
+            let isGroup = (sessionType == 1)
+            
+            if pk > self.lastMaxPK {
+                self.lastMaxPK = pk
+                let message = WhatsAppMessage(
+                    id: "\(pk)",
+                    senderName: sender,
+                    messageText: text,
+                    timestamp: Date(),
+                    isGroup: isGroup,
+                    groupName: isGroup ? sender : nil
+                )
+                DispatchQueue.main.async { [weak self] in
+                    self?.postMessage(message)
+                }
+            }
+        }
     }
     
     public func postMessage(_ message: WhatsAppMessage) {
