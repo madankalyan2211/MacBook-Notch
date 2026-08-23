@@ -30,6 +30,7 @@ public final class DynamicIslandController: ObservableObject {
     @Published public var isCapsLockHUDEnabled: Bool = true
     @Published public var isLockHUDEnabled: Bool = true
     @Published public var isCaffeineHUDEnabled: Bool = true
+    @Published public var isWeatherEnabled: Bool = true
     @Published public var isNativeHUDSuppressionEnabled: Bool = true
     
     private var autoCollapseTimer: Timer?
@@ -513,6 +514,23 @@ public final class DynamicIslandController: ObservableObject {
                     self.updateGeometry(animated: true)
                 }
             }
+        }
+        
+        // 13. Ambient Live Weather & Air Quality integration
+        WeatherService.shared.onWeatherUpdated = { [weak self] weather in
+            guard let self = self, self.isWeatherEnabled else { return }
+            if let existing = self.activityManager.getActivity(id: "activity.weather") as? WeatherActivity {
+                existing.weather = weather
+            } else {
+                let weatherAct = WeatherActivity(weather: weather)
+                self.activityManager.presentActivity(weatherAct)
+            }
+        }
+        
+        // Initial presentation of ambient weather if enabled
+        if isWeatherEnabled {
+            let weatherAct = WeatherActivity(weather: WeatherService.shared.currentWeather)
+            self.activityManager.presentActivity(weatherAct)
         }
     }
     

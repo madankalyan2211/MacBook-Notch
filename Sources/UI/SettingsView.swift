@@ -110,6 +110,15 @@ public struct ActivitiesSettingsTab: View {
                 Toggle("Music & Now Playing", isOn: $controller.isMusicEnabled)
                 Toggle("Timer & Countdown", isOn: $controller.isTimerEnabled)
                 Toggle("Clipboard Monitor", isOn: $controller.isClipboardEnabled)
+                Toggle("Live Weather & Air Quality Pill (Ambient)", isOn: $controller.isWeatherEnabled)
+                    .onChange(of: controller.isWeatherEnabled) { enabled in
+                        if enabled {
+                            let act = WeatherActivity(weather: WeatherService.shared.currentWeather)
+                            controller.activityManager.presentActivity(act)
+                        } else {
+                            controller.activityManager.removeActivity(id: "activity.weather")
+                        }
+                    }
             }
         }
         .padding()

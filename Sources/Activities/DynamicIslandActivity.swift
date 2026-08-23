@@ -27,6 +27,7 @@ public enum ActivityType: String, CaseIterable, Sendable {
     case lock
     case caffeine
     case download
+    case weather
     case ai
     case custom
 }
