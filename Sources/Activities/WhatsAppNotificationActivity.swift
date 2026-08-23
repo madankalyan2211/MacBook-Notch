@@ -5,7 +5,7 @@ public final class WhatsAppNotificationActivity: DynamicIslandActivity, Observab
     public let id: String
     public let type: ActivityType = .whatsapp
     public let priority: ActivityPriority = .critical
-    public var timeoutDuration: TimeInterval? = 7.0
+    public var timeoutDuration: TimeInterval? = 8.0
     
     @Published public var message: WhatsAppMessage
     
@@ -20,8 +20,6 @@ public final class WhatsAppNotificationActivity: DynamicIslandActivity, Observab
         let textSnippetCount = CGFloat(min(message.messageText.count, 22))
         
         // Base hardware notch width is ~195pt.
-        // In CompactIslandView, the physical notch sits in the center:
-        // Left Wing needs: Icon (16pt) + Spacing (6pt) + Text (nameCharCount * 9.2pt) + Padding (16pt)
         let leftWingRequired = (nameCharCount * 9.2) + 42.0
         let rightWingRequired = (textSnippetCount * 7.5) + 38.0
         let maxWing = max(leftWingRequired, rightWingRequired)
@@ -35,10 +33,8 @@ public final class WhatsAppNotificationActivity: DynamicIslandActivity, Observab
     
     public var expandedPreferredSize: CGSize {
         let nameCharCount = CGFloat(message.senderName.count)
-        let cardWidth = max(420.0, min(560.0, 380.0 + (nameCharCount * 6.5)))
-        let isLongMessage = message.messageText.count > 50
-        let cardHeight: CGFloat = isLongMessage ? 165.0 : 148.0
-        return CGSize(width: cardWidth, height: cardHeight)
+        let cardWidth = max(430.0, min(560.0, 390.0 + (nameCharCount * 6.0)))
+        return CGSize(width: cardWidth, height: 172)
     }
     
     public init(message: WhatsAppMessage) {
@@ -120,12 +116,17 @@ public struct WhatsAppExpandedCardView: View {
     public let controller: DynamicIslandController
     public let namespace: Namespace.ID?
     
+    @State private var replyText: String = ""
+    @State private var isSending: Bool = false
+    @State private var isSentSuccess: Bool = false
+    @FocusState private var isFieldFocused: Bool
+    
     private var message: WhatsAppMessage { activity.message }
     private let waGreen = Color(red: 0.15, green: 0.83, blue: 0.40)
     
     public var body: some View {
-        VStack(spacing: 10) {
-            // Header Row: Avatar / Icon + Sender Name + Time + Dismiss X
+        VStack(spacing: 9) {
+            // Header Row: Avatar Badge + Sender Name + Group info + Time + Dismiss X
             HStack(spacing: 9) {
                 // WhatsApp Icon Badge
                 ZStack {
@@ -143,11 +144,13 @@ public struct WhatsAppExpandedCardView: View {
                         Text(message.senderName)
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
+                            .lineLimit(1)
                         
                         if message.isGroup, let grp = message.groupName {
                             Text("• \(grp)")
                                 .font(.system(size: 11, weight: .medium, design: .rounded))
                                 .foregroundColor(.white.opacity(0.55))
+                                .lineLimit(1)
                         }
                     }
                     
@@ -160,8 +163,7 @@ public struct WhatsAppExpandedCardView: View {
                 
                 // Dismiss "X" Button
                 Button(action: {
-                    WhatsAppNotificationService.shared.dismissMessage()
-                    controller.activityManager.removeActivity(id: activity.id)
+                    dismissAndCollapse()
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 15, weight: .semibold))
@@ -176,38 +178,111 @@ public struct WhatsAppExpandedCardView: View {
             // Message Bubble Content
             HStack {
                 Text(message.messageText)
-                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                    .font(.system(size: 12.5, weight: .regular, design: .rounded))
                     .foregroundColor(.white.opacity(0.95))
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.vertical, 6)
             .background(Color.white.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             
-            // Bottom Action Bar: Open in WhatsApp + Copy Text
-            HStack(spacing: 10) {
+            // Quick Reply Capsule Input Bar
+            HStack(spacing: 8) {
+                if isSentSuccess {
+                    // Cool Sent Success Animation Banner
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(waGreen)
+                        
+                        Text("Reply Sent!")
+                            .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                            .foregroundColor(waGreen)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 7)
+                    .background(waGreen.opacity(0.15))
+                    .clipShape(Capsule())
+                    .transition(.scale.combined(with: .opacity))
+                } else {
+                    // Inline Text Field
+                    HStack(spacing: 6) {
+                        TextField("Reply to \(message.senderName)...", text: $replyText, onCommit: {
+                            handleSendReply()
+                        })
+                        .focused($isFieldFocused)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        
+                        if !replyText.isEmpty {
+                            Button(action: {
+                                replyText = ""
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 6)
+                        }
+                    }
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(isFieldFocused ? waGreen.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
+                    )
+                    
+                    // Send Button
+                    Button(action: {
+                        handleSendReply()
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.15, green: 0.83, blue: 0.40), Color(red: 0.10, green: 0.65, blue: 0.32)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 28, height: 28)
+                            
+                            Image(systemName: "paperplane.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                                .offset(x: -0.5, y: 0.5)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .opacity(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1.0)
+                }
+            }
+            .padding(.horizontal, 2)
+            
+            // Bottom Quick Links Row
+            HStack(spacing: 8) {
                 Button(action: {
                     WhatsAppNotificationService.shared.openWhatsApp()
+                    dismissAndCollapse()
                 }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "arrow.up.forward.app.fill")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("Reply in WhatsApp")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Open App")
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4.5)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(red: 0.15, green: 0.83, blue: 0.40), Color(red: 0.10, green: 0.65, blue: 0.32)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(Color.white.opacity(0.09))
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -215,16 +290,16 @@ public struct WhatsAppExpandedCardView: View {
                 Button(action: {
                     WhatsAppNotificationService.shared.copyMessageText()
                 }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "doc.on.doc.fill")
-                            .font(.system(size: 10.5, weight: .medium))
-                        Text("Copy Text")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .font(.system(size: 9.5, weight: .medium))
+                        Text("Copy")
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
                     }
-                    .foregroundColor(.white.opacity(0.85))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4.5)
-                    .background(Color.white.opacity(0.12))
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(Color.white.opacity(0.09))
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -234,5 +309,35 @@ public struct WhatsAppExpandedCardView: View {
             .padding(.horizontal, 4)
         }
         .padding(.horizontal, 4)
+    }
+    
+    private func handleSendReply() {
+        let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isSending else { return }
+        
+        isSending = true
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            isSentSuccess = true
+        }
+        
+        // Execute reply sending
+        WhatsAppNotificationService.shared.sendReply(text: trimmed)
+        
+        // Smooth delay to appreciate the cool checkmark animation, then collapse
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) {
+            dismissAndCollapse()
+        }
+    }
+    
+    private func dismissAndCollapse() {
+        WhatsAppNotificationService.shared.dismissMessage()
+        controller.activityManager.removeActivity(id: activity.id)
+        
+        // Gracefully collapse to running activity (e.g. Music / Timer) or idle
+        if controller.activityManager.activeActivity != nil {
+            controller.transition(to: .compact)
+        } else {
+            controller.transition(to: .idle)
+        }
     }
 }
