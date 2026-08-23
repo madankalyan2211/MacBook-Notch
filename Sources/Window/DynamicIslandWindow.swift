@@ -115,12 +115,39 @@ public final class DynamicIslandHostingView<Content: View>: NSHostingView<Conten
     
     private func extractURLs(from pasteboard: NSPasteboard) -> [URL] {
         var results: [URL] = []
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+        
+        // 1. NSFilenamesPboardType (Standard Finder Drag Format)
+        if let filenames = pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String] {
+            for path in filenames {
+                results.append(URL(fileURLWithPath: path))
+            }
+        }
+        
+        // 2. Read NSURL objects
+        if results.isEmpty, let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
             results.append(contentsOf: urls)
         }
-        if results.isEmpty, let filenames = pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String] {
-            results.append(contentsOf: filenames.map { URL(fileURLWithPath: $0) })
+        
+        // 3. URLs with fileURL reading option
+        if results.isEmpty, let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [NSPasteboard.ReadingOptionKey.urlReadingFileURLsOnly: true]) as? [URL] {
+            results.append(contentsOf: urls)
         }
+        
+        // 4. Pasteboard items inspect
+        if results.isEmpty, let items = pasteboard.pasteboardItems {
+            for item in items {
+                for type in item.types {
+                    if let stringVal = item.string(forType: type) {
+                        if stringVal.hasPrefix("file://"), let u = URL(string: stringVal) {
+                            results.append(u)
+                        } else if stringVal.hasPrefix("/"), FileManager.default.fileExists(atPath: stringVal) {
+                            results.append(URL(fileURLWithPath: stringVal))
+                        }
+                    }
+                }
+            }
+        }
+        
         return results
     }
     

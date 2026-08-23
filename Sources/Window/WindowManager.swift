@@ -77,6 +77,13 @@ public final class WindowManager: ObservableObject {
         weatherItem.state = controller.isWeatherEnabled ? .on : .off
         menu.addItem(weatherItem)
         
+        let fileCount = FileShelfService.shared.files.count
+        let shelfTitle = fileCount > 0 ? "📁 Notch Shelf (\(fileCount) \(fileCount == 1 ? "File" : "Files"))" : "📁 Notch Shelf"
+        let shelfItem = NSMenuItem(title: shelfTitle, action: #selector(openShelfAction), keyEquivalent: "s")
+        shelfItem.keyEquivalentModifierMask = [.option]
+        shelfItem.target = self
+        menu.addItem(shelfItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitAppAction), keyEquivalent: "q")
@@ -85,10 +92,14 @@ public final class WindowManager: ObservableObject {
         
         statusItem?.menu = menu
         
-        // Global hotkey monitor: Option+D (D=2), Option+A (A=0), Option+C (C=8), Option+R (R=15), Option+H (H=4)
+        // Global hotkey monitor: Option+S (S=1), Option+D (D=2), Option+A (A=0), Option+C (C=8), Option+R (R=15), Option+H (H=4)
         NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.modifierFlags.contains(.option) {
-                if event.keyCode == 4 { // Option+H
+                if event.keyCode == 1 { // Option+S
+                    DispatchQueue.main.async {
+                        self?.openShelfAction()
+                    }
+                } else if event.keyCode == 4 { // Option+H
                     DispatchQueue.main.async {
                         self?.playHelloAction()
                     }
@@ -224,6 +235,12 @@ public final class WindowManager: ObservableObject {
     
     @objc private func playHelloAction() {
         controller.triggerHelloSignature()
+    }
+    
+    @objc private func openShelfAction() {
+        let shelfAct = FileShelfActivity(files: FileShelfService.shared.files)
+        controller.activityManager.presentActivity(shelfAct)
+        controller.transition(to: .expanded)
     }
     
     @objc private func toggleVoiceMemoAction() {

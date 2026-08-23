@@ -538,10 +538,8 @@ public final class DynamicIslandController: ObservableObject {
             if files.isEmpty {
                 self.activityManager.removeActivity(id: "activity.shelf")
             } else {
-                if let existing = self.activityManager.getActivity(id: "activity.shelf") as? FileShelfActivity {
-                    existing.files = files
-                } else {
-                    let shelfAct = FileShelfActivity(files: files)
+                if self.activityManager.getActivity(id: "activity.shelf") == nil {
+                    let shelfAct = FileShelfActivity()
                     self.activityManager.presentActivity(shelfAct)
                 }
             }

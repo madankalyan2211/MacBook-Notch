@@ -7,7 +7,7 @@ public final class FileShelfActivity: DynamicIslandActivity, ObservableObject {
     public let priority: ActivityPriority = .high
     public var timeoutDuration: TimeInterval? = nil
     
-    @Published public var files: [ShelvedFileItem]
+    public var files: [ShelvedFileItem] { FileShelfService.shared.files }
     
     public var title: String { "\(files.count) Shelved \(files.count == 1 ? "File" : "Files")" }
     public var subtitle: String { "AirDrop & Stash" }
@@ -19,7 +19,9 @@ public final class FileShelfActivity: DynamicIslandActivity, ObservableObject {
     public var expandedPreferredSize: CGSize { CGSize(width: 395, height: 165) }
     
     public init(files: [ShelvedFileItem] = []) {
-        self.files = files
+        if !files.isEmpty && FileShelfService.shared.files.isEmpty {
+            FileShelfService.shared.addFiles(urls: files.map { $0.url })
+        }
     }
     
     public func compactLeadingView(namespace: Namespace.ID?) -> AnyView {
@@ -51,6 +53,7 @@ public final class FileShelfActivity: DynamicIslandActivity, ObservableObject {
 
 public struct ShelfCompactLeadingView: View {
     @ObservedObject public var activity: FileShelfActivity
+    @ObservedObject private var shelfService = FileShelfService.shared
     public let namespace: Namespace.ID?
     
     public var body: some View {
@@ -59,7 +62,7 @@ public struct ShelfCompactLeadingView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(activity.tintColor)
             
-            Text("\(activity.files.count) \(activity.files.count == 1 ? "File" : "Files")")
+            Text("\(shelfService.files.count) \(shelfService.files.count == 1 ? "File" : "Files")")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundColor(.white)
                 .lineLimit(1)
