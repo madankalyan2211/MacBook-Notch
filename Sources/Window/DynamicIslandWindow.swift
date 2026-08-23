@@ -134,17 +134,17 @@ public final class DynamicIslandHostingView<Content: View>: NSHostingView<Conten
         // View bounds: width = bounds.width, height = bounds.height
         // Island is attached flush to the top edge (y = bounds.height)
         let topY = bounds.height
-        let bottomY = topY - max(geometry.height, 30.5) - 20 // cushion for hover / click / drop
+        let bottomY = topY - max(geometry.height, 30.5)
         
         let mainWidth = max(geometry.width, 160)
         let hasSecondary = (controller.state == .compact && controller.activityManager.secondaryActivity != nil)
-        let bubbleExtraRight: CGFloat = hasSecondary ? (geometry.height + 30.0) : 0
+        let bubbleExtraRight: CGFloat = hasSecondary ? (geometry.height + 20.0) : 0
         
         // Main island is centered at bounds.width / 2.0
-        let minX = (bounds.width - mainWidth) / 2.0 - 20
-        let maxX = (bounds.width + mainWidth) / 2.0 + bubbleExtraRight + 20
+        let minX = (bounds.width - mainWidth) / 2.0
+        let maxX = (bounds.width + mainWidth) / 2.0 + bubbleExtraRight
         
-        let activeRect = NSRect(x: minX, y: bottomY, width: maxX - minX, height: topY - bottomY + 20)
+        let activeRect = NSRect(x: minX, y: bottomY, width: maxX - minX, height: topY - bottomY)
         
         if activeRect.contains(point) {
             return super.hitTest(point) ?? self

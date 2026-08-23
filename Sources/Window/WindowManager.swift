@@ -371,7 +371,8 @@ public final class WindowManager: ObservableObject {
         let islandMaxX = winFrame.midX + (mainWidth / 2.0) + bubbleRightExtent
         let islandY = winFrame.maxY - islandHeight
         
-        let cushion: CGFloat = 12.0
+        let isIdle = (controller.state == .idle)
+        let cushion: CGFloat = isIdle ? 0.0 : 2.0
         let activeRect = NSRect(
             x: islandMinX - cushion,
             y: islandY - cushion,
