@@ -92,8 +92,8 @@ public final class WhatsAppNotificationService: ObservableObject {
     }
     
     private func startLiveMonitoring() {
-        // Fast 1-second poller to capture new WhatsApp messages
-        dbPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        // Fast 0.8-second poller to capture new WhatsApp messages
+        dbPollTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
             self?.checkForNewWhatsAppMessages()
         }
         
@@ -125,9 +125,15 @@ public final class WhatsAppNotificationService: ObservableObject {
         defer { sqlite3_close(db) }
         
         let query = """
-        SELECT m.Z_PK, IFNULL(s.ZPARTNERNAME, m.ZPUSHNAME), m.ZTEXT, s.ZSESSIONTYPE
+        SELECT 
+            m.Z_PK, 
+            COALESCE(NULLIF(s.ZPARTNERNAME, ''), p.ZPUSHNAME, s.ZCONTACTJID, 'WhatsApp'), 
+            m.ZTEXT, 
+            s.ZSESSIONTYPE,
+            s.ZPARTNERNAME
         FROM ZWAMESSAGE m
         LEFT JOIN ZWACHATSESSION s ON m.ZCHATSESSION = s.Z_PK
+        LEFT JOIN ZWAPROFILEPUSHNAME p ON (m.ZFROMJID = p.ZJID OR s.ZCONTACTJID = p.ZJID)
         WHERE m.ZISFROMME = 0 AND m.Z_PK > ?
         ORDER BY m.Z_PK ASC;
         """
@@ -143,10 +149,13 @@ public final class WhatsAppNotificationService: ObservableObject {
         
         while sqlite3_step(stmt) == SQLITE_ROW {
             let pk = sqlite3_column_int64(stmt, 0)
-            let sender = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? "WhatsApp"
+            let rawSender = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? "WhatsApp"
             let text = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? "New Message"
             let sessionType = sqlite3_column_int(stmt, 3)
+            let groupPartnerName = sqlite3_column_text(stmt, 4).map { String(cString: $0) }
+            
             let isGroup = (sessionType == 1)
+            let sender = cleanSenderName(rawSender)
             
             if pk > self.lastMaxPK {
                 self.lastMaxPK = pk
@@ -156,13 +165,34 @@ public final class WhatsAppNotificationService: ObservableObject {
                     messageText: text,
                     timestamp: Date(),
                     isGroup: isGroup,
-                    groupName: isGroup ? sender : nil
+                    groupName: isGroup ? (groupPartnerName ?? sender) : nil
                 )
                 DispatchQueue.main.async { [weak self] in
                     self?.postMessage(message)
                 }
             }
         }
+    }
+    
+    private func cleanSenderName(_ rawName: String) -> String {
+        var name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.hasSuffix("@s.whatsapp.net") {
+            name = String(name.dropLast("@s.whatsapp.net".count))
+            if name.count >= 10 {
+                name = "+\(name)"
+            }
+        } else if name.hasSuffix("@g.us") {
+            name = "Group Chat"
+        } else if name.hasSuffix("@lid") {
+            name = "WhatsApp Contact"
+        }
+        
+        // Filter out base64 / encoded hash strings that are not human names
+        if name.contains("==") || (name.count > 25 && !name.contains(" ")) {
+            name = "WhatsApp Contact"
+        }
+        
+        return name
     }
     
     public func postMessage(_ message: WhatsAppMessage) {
