@@ -249,9 +249,9 @@ public final class DynamicIslandWindow: NSPanel {
         ])
     }
     
-    // Never steal keyboard or window focus from user's active apps
+    // Allows keyboard input when in expanded text entry mode, otherwise yields focus to active apps
     public override var canBecomeKey: Bool {
-        return false
+        return DynamicIslandController.shared.state == .expanded
     }
     
     public override var canBecomeMain: Bool {

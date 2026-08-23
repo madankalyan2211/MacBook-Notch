@@ -309,6 +309,15 @@ public struct WhatsAppExpandedCardView: View {
             .padding(.horizontal, 4)
         }
         .padding(.horizontal, 4)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                NSApp.activate(ignoringOtherApps: true)
+                if let win = NSApp.windows.first(where: { $0 is DynamicIslandWindow }) {
+                    win.makeKey()
+                }
+                self.isFieldFocused = true
+            }
+        }
     }
     
     private func handleSendReply() {
@@ -330,6 +339,11 @@ public struct WhatsAppExpandedCardView: View {
     }
     
     private func dismissAndCollapse() {
+        isFieldFocused = false
+        if let win = NSApp.windows.first(where: { $0 is DynamicIslandWindow }) {
+            win.resignKey()
+        }
+        
         WhatsAppNotificationService.shared.dismissMessage()
         controller.activityManager.removeActivity(id: activity.id)
         
