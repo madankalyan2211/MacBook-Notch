@@ -56,8 +56,8 @@ public struct WeatherData: Sendable {
     }
 }
 
-/// Service managing ambient live weather & air quality telemetry via silent zero-permission IP geolocation
-public final class WeatherService: ObservableObject {
+/// Service managing ambient live weather & air quality telemetry via macOS Location Services with IP geolocation fallback
+public final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegate {
     public static let shared = WeatherService()
     
     @Published public private(set) var currentWeather: WeatherData = .fallback
@@ -70,11 +70,13 @@ public final class WeatherService: ObservableObject {
     
     public var onWeatherUpdated: ((WeatherData) -> Void)?
     
+    private var locationManager: CLLocationManager?
     private var currentCoords: (lat: Double, lon: Double) = (37.7749, -122.4194)
     private var currentCityName: String = "San Francisco"
     private var refreshTimer: Timer?
     
-    private init() {
+    private override init() {
+        super.init()
         let storedF = UserDefaults.standard.object(forKey: "macbooknotch.weather.isFahrenheit") as? Bool ?? true
         self.isFahrenheit = storedF
         
@@ -87,11 +89,52 @@ public final class WeatherService: ObservableObject {
     }
     
     private func setupLocationAndFetch() {
-        // Immediate silent IP geolocation for zero-permission accurate city & coords
+        // Immediate fallback IP geolocation
         fetchIPLocation()
+        
+        // Check macOS Location Services
+        locationManager = CLLocationManager()
+        locationManager?.delegate = self
+        locationManager?.desiredAccuracy = kCLLocationAccuracyKilometer
+        
+        if CLLocationManager.locationServicesEnabled() {
+            let status = locationManager?.authorizationStatus ?? .notDetermined
+            if status == .authorizedAlways || status == .authorized {
+                locationManager?.startUpdatingLocation()
+            } else if status == .notDetermined {
+                locationManager?.requestWhenInUseAuthorization()
+            }
+        }
         
         // Initial fetch
         fetchWeather()
+    }
+    
+    public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        if status == .authorizedAlways || status == .authorized {
+            manager.startUpdatingLocation()
+        }
+    }
+    
+    public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let loc = locations.last else { return }
+        self.currentCoords = (lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
+        
+        let geocoder = CLGeocoder()
+        geocoder.reverseGeocodeLocation(loc) { [weak self] placemarks, _ in
+            if let city = placemarks?.first?.locality ?? placemarks?.first?.name {
+                self?.currentCityName = city
+            }
+            self?.fetchWeather()
+        }
+        
+        manager.stopUpdatingLocation()
+    }
+    
+    public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        // Silent fallback to IP Geolocation
+        fetchIPLocation()
     }
     
     private func fetchIPLocation() {
