@@ -20,14 +20,14 @@ public final class ActivityManager: ObservableObject {
     
     /// The secondary concurrent activity displayed in the detached bubble (strictly for persistent tasks like Music, Timers, Calls, Voice Memos)
     public var secondaryActivity: (any DynamicIslandActivity)? {
-        // If current active activity is a temporary HUD, Weather, or Pet, suppress secondary bubble
-        if let current = activeActivity, current.priority == .critical || current.type == .volume || current.type == .brightness || current.type == .battery || current.type == .clipboard || current.type == .weather || current.type == .pet || current.id == "activity.focus" {
+        // If current active activity is a temporary HUD or Weather, suppress secondary bubble
+        if let current = activeActivity, current.priority == .critical || current.type == .volume || current.type == .brightness || current.type == .battery || current.type == .clipboard || current.type == .weather || current.id == "activity.focus" {
             return nil
         }
         
         // Filter stack for persistent multi-activity candidates only (Music, Timer, Calls, Voice Memos, Downloads)
         let eligibleStack = activityStack.filter {
-            $0.type != .volume && $0.type != .brightness && $0.type != .battery && $0.type != .clipboard && $0.type != .weather && $0.type != .pet && $0.id != "activity.focus" && $0.id != "hud.capslock" && $0.id != "hud.lock" && $0.id != "activity.caffeine"
+            $0.type != .volume && $0.type != .brightness && $0.type != .battery && $0.type != .clipboard && $0.type != .weather && $0.id != "activity.focus" && $0.id != "hud.capslock" && $0.id != "hud.lock" && $0.id != "activity.caffeine"
         }
         
         guard eligibleStack.count > 1 else { return nil }
@@ -39,19 +39,15 @@ public final class ActivityManager: ObservableObject {
         return eligibleStack.count > 1 ? eligibleStack[1] : nil
     }
     
-    /// Determines the correct foreground activity, ensuring Ambient activities (Pet / Weather) yield to active foreground tasks
+    /// Determines the correct foreground activity, ensuring Weather is ONLY shown when truly idle
     public func resolveActiveActivity() -> (any DynamicIslandActivity)? {
-        let nonAmbient = activityStack.filter { $0.type != .weather && $0.type != .pet }
-        if !nonAmbient.isEmpty {
-            if let current = activeActivity, let match = nonAmbient.first(where: { $0.id == current.id }) {
+        let nonWeather = activityStack.filter { $0.type != .weather }
+        if !nonWeather.isEmpty {
+            if let current = activeActivity, let match = nonWeather.first(where: { $0.id == current.id }) {
                 return match
             }
-            return nonAmbient.first
+            return nonWeather.first
         } else {
-            // Ambient idle priority: Pet activity takes foreground if enabled, else Weather
-            if let pet = activityStack.first(where: { $0.type == .pet }) {
-                return pet
-            }
             return activityStack.first(where: { $0.type == .weather })
         }
     }

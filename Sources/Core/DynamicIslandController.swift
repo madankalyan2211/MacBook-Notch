@@ -31,7 +31,6 @@ public final class DynamicIslandController: ObservableObject {
     @Published public var isLockHUDEnabled: Bool = true
     @Published public var isCaffeineHUDEnabled: Bool = true
     @Published public var isWeatherEnabled: Bool = true
-    @Published public var isNotchPetEnabled: Bool = true
     @Published public var isNativeHUDSuppressionEnabled: Bool = true
     
     private var autoCollapseTimer: Timer?
@@ -109,9 +108,6 @@ public final class DynamicIslandController: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] (track, isPlaying) in
                 guard let self = self, self.isMusicEnabled else { return }
-                
-                // Notify Notch Pet of music state
-                NotchPetService.shared.setMusicActive(isPlaying)
                 
                 if let existing = self.activityManager.getActivity(id: "activity.music") as? MusicActivity {
                     existing.title = track.title
@@ -200,9 +196,6 @@ public final class DynamicIslandController: ObservableObject {
         
         TimerService.shared.onTimerFinished = { [weak self] timer in
             guard let self = self, self.isTimerEnabled else { return }
-            
-            // Celebrate timer completion with Notch Pet confetti!
-            NotchPetService.shared.celebrate()
             
             let finishedAct = TimerActivity(
                 id: timer.id,
@@ -542,25 +535,6 @@ public final class DynamicIslandController: ObservableObject {
         // Initial presentation of ambient weather with 3 minutes idle delay
         if isWeatherEnabled {
             scheduleAmbientWeatherPresentation(delay: 180.0)
-        }
-        
-        // 14. Notch Pet Companion integration
-        NotchPetService.shared.onStateUpdated = { [weak self] in
-            guard let self = self else { return }
-            if self.isNotchPetEnabled && NotchPetService.shared.isEnabled {
-                if self.activityManager.getActivity(id: "activity.pet") == nil {
-                    let petAct = PetActivity()
-                    self.activityManager.presentActivity(petAct)
-                }
-            } else {
-                self.activityManager.removeActivity(id: "activity.pet")
-            }
-        }
-        
-        // Initial presentation of Notch Pet if enabled
-        if isNotchPetEnabled && NotchPetService.shared.isEnabled {
-            let petAct = PetActivity()
-            self.activityManager.presentActivity(petAct)
         }
     }
     

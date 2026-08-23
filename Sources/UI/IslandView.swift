@@ -81,6 +81,10 @@ public struct IslandView: View {
                     .padding(.vertical, geometry.verticalPadding)
                     .frame(width: geometry.width, height: geometry.height)
                     .clipShape(islandShape)
+                
+                // Real-time Universal Audio Reactive Waveform Visualizer
+                NotchAudioVisualizerView(width: geometry.width, height: geometry.height)
+                    .clipShape(islandShape)
             }
             .frame(width: geometry.width, height: geometry.height)
             .contentShape(islandShape)
