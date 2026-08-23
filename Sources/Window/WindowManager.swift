@@ -77,6 +77,38 @@ public final class WindowManager: ObservableObject {
         weatherItem.state = controller.isWeatherEnabled ? .on : .off
         menu.addItem(weatherItem)
         
+        // 🐾 Notch Pet Submenu
+        let petMenu = NSMenu()
+        
+        let togglePetItem = NSMenuItem(title: "Enable Notch Pet", action: #selector(togglePetAction), keyEquivalent: "")
+        togglePetItem.target = self
+        togglePetItem.state = NotchPetService.shared.isEnabled ? .on : .off
+        petMenu.addItem(togglePetItem)
+        
+        petMenu.addItem(NSMenuItem.separator())
+        
+        for species in PetSpecies.allCases {
+            let item = NSMenuItem(title: species.displayName, action: #selector(selectPetSpeciesAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = species
+            item.state = (NotchPetService.shared.species == species) ? .on : .off
+            petMenu.addItem(item)
+        }
+        
+        petMenu.addItem(NSMenuItem.separator())
+        
+        let feedItem = NSMenuItem(title: "🍖 Feed Snack", action: #selector(feedPetAction), keyEquivalent: "")
+        feedItem.target = self
+        petMenu.addItem(feedItem)
+        
+        let trickItem = NSMenuItem(title: "✨ Pet Me / Do Trick", action: #selector(petPetAction), keyEquivalent: "")
+        trickItem.target = self
+        petMenu.addItem(trickItem)
+        
+        let petParentItem = NSMenuItem(title: "🐾 Notch Pet (\(NotchPetService.shared.species.displayName))", action: nil, keyEquivalent: "")
+        petParentItem.submenu = petMenu
+        menu.addItem(petParentItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitAppAction), keyEquivalent: "q")
@@ -301,6 +333,30 @@ public final class WindowManager: ObservableObject {
             controller.scheduleAmbientWeatherPresentation(delay: 180.0)
         }
         setupStatusItem()
+    }
+    
+    @objc private func togglePetAction() {
+        NotchPetService.shared.isEnabled.toggle()
+        if !NotchPetService.shared.isEnabled {
+            controller.activityManager.removeActivity(id: "activity.pet")
+        }
+        setupStatusItem()
+    }
+    
+    @objc private func selectPetSpeciesAction(_ sender: NSMenuItem) {
+        if let species = sender.representedObject as? PetSpecies {
+            NotchPetService.shared.species = species
+            NotchPetService.shared.celebrate()
+            setupStatusItem()
+        }
+    }
+    
+    @objc private func feedPetAction() {
+        NotchPetService.shared.feedSnack()
+    }
+    
+    @objc private func petPetAction() {
+        NotchPetService.shared.petCompanion()
     }
     
     @objc private func testLowBatteryAction() {

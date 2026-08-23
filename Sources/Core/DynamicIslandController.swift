@@ -31,6 +31,7 @@ public final class DynamicIslandController: ObservableObject {
     @Published public var isLockHUDEnabled: Bool = true
     @Published public var isCaffeineHUDEnabled: Bool = true
     @Published public var isWeatherEnabled: Bool = true
+    @Published public var isNotchPetEnabled: Bool = true
     @Published public var isNativeHUDSuppressionEnabled: Bool = true
     
     private var autoCollapseTimer: Timer?
@@ -108,6 +109,9 @@ public final class DynamicIslandController: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] (track, isPlaying) in
                 guard let self = self, self.isMusicEnabled else { return }
+                
+                // Notify Notch Pet of music state
+                NotchPetService.shared.setMusicActive(isPlaying)
                 
                 if let existing = self.activityManager.getActivity(id: "activity.music") as? MusicActivity {
                     existing.title = track.title
@@ -196,6 +200,10 @@ public final class DynamicIslandController: ObservableObject {
         
         TimerService.shared.onTimerFinished = { [weak self] timer in
             guard let self = self, self.isTimerEnabled else { return }
+            
+            // Celebrate timer completion with Notch Pet confetti!
+            NotchPetService.shared.celebrate()
+            
             let finishedAct = TimerActivity(
                 id: timer.id,
                 title: "Timer Done!",

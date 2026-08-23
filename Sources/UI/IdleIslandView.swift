@@ -3,10 +3,14 @@ import SwiftUI
 /// Idle Island View: Represents the notch seamlessly integrated into macOS.
 public struct IdleIslandView: View {
     public let isHovered: Bool
+    @ObservedObject private var pet = NotchPetService.shared
     
     public var body: some View {
         HStack(spacing: 8) {
-            if isHovered {
+            if pet.isEnabled {
+                NotchPetRenderer(size: 20)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            } else if isHovered {
                 Circle()
                     .fill(Color.white.opacity(0.35))
                     .frame(width: 4, height: 4)

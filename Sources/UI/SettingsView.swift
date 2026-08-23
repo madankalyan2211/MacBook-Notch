@@ -22,19 +22,25 @@ public struct SettingsView: View {
                 }
                 .tag(1)
             
+            NotchPetSettingsTab(controller: controller)
+                .tabItem {
+                    Label("Notch Pet", systemImage: "pawprint.fill")
+                }
+                .tag(2)
+            
             PrivacySettingsTab(controller: controller)
                 .tabItem {
                     Label("Privacy", systemImage: "hand.raised.fill")
                 }
-                .tag(2)
+                .tag(3)
             
             DebugSimulatorTab(controller: controller)
                 .tabItem {
                     Label("Simulator", systemImage: "play.circle")
                 }
-                .tag(3)
+                .tag(4)
         }
-        .frame(width: 520, height: 440)
+        .frame(width: 530, height: 460)
         .padding()
     }
 }
@@ -158,6 +164,74 @@ public struct PrivacySettingsTab: View {
                 }
                 
                 Text("macOS requires Accessibility permissions to intercept hardware volume and brightness keys so the stock square overlay can be completely hidden.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+    }
+}
+
+public struct NotchPetSettingsTab: View {
+    @ObservedObject public var controller: DynamicIslandController
+    @ObservedObject private var pet = NotchPetService.shared
+    
+    public var body: some View {
+        Form {
+            Section(header: Text("🐾 Notch Pet Companion").font(.headline)) {
+                Toggle("Enable Animated Notch Pet", isOn: $pet.isEnabled)
+                
+                if pet.isEnabled {
+                    Picker("Selected Pet Species", selection: $pet.species) {
+                        ForEach(PetSpecies.allCases) { species in
+                            Text(species.displayName).tag(species)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    
+                    HStack(spacing: 16) {
+                        VStack {
+                            NotchPetRenderer(size: 38)
+                                .frame(width: 60, height: 50)
+                                .background(Color.black.opacity(0.3))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                            
+                            Text(pet.species.displayName)
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Favorite Snack: \(pet.species.favoriteFood)")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.secondary)
+                            
+                            HStack(spacing: 8) {
+                                Button("🍖 Feed Snack") {
+                                    pet.feedSnack()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                
+                                Button("✨ Pet / Trick") {
+                                    pet.petCompanion()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            
+            Section(header: Text("Reactions & Behaviors").font(.headline)) {
+                Text("• Bobs head and wears DJ headphones when music plays")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("• Celebrates with colorful confetti when your timers or focus sessions finish")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("• Takes cozy naps with floating zZZ sleep bubbles during long idle times")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
