@@ -56,8 +56,8 @@ public struct WeatherData: Sendable {
     }
 }
 
-/// Service managing ambient live weather & air quality telemetry via macOS Location Services with IP geolocation fallback
-public final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegate {
+/// Service managing ambient live weather & air quality telemetry via silent IP geolocation
+public final class WeatherService: NSObject, ObservableObject {
     public static let shared = WeatherService()
     
     @Published public private(set) var currentWeather: WeatherData = .fallback
@@ -70,71 +70,38 @@ public final class WeatherService: NSObject, ObservableObject, CLLocationManager
     
     public var onWeatherUpdated: ((WeatherData) -> Void)?
     
-    private var locationManager: CLLocationManager?
-    private var currentCoords: (lat: Double, lon: Double) = (37.7749, -122.4194)
-    private var currentCityName: String = "San Francisco"
+    private var currentCoords: (lat: Double, lon: Double)
+    private var currentCityName: String
     private var refreshTimer: Timer?
     
     private override init() {
-        super.init()
         let storedF = UserDefaults.standard.object(forKey: "macbooknotch.weather.isFahrenheit") as? Bool ?? true
         self.isFahrenheit = storedF
         
-        setupLocationAndFetch()
+        let savedLat = UserDefaults.standard.double(forKey: "macbooknotch.weather.savedLat")
+        let savedLon = UserDefaults.standard.double(forKey: "macbooknotch.weather.savedLon")
+        let savedCity = UserDefaults.standard.string(forKey: "macbooknotch.weather.savedCity") ?? "Cupertino"
+        
+        if savedLat != 0 && savedLon != 0 {
+            self.currentCoords = (lat: savedLat, lon: savedLon)
+            self.currentCityName = savedCity
+        } else {
+            self.currentCoords = (lat: 37.7749, lon: -122.4194)
+            self.currentCityName = "San Francisco"
+        }
+        
+        super.init()
+        
+        // Fetch location silently via IP without triggering macOS Location permission dialogs
+        fetchIPLocation()
+        
+        // Initial fetch
+        fetchWeather()
         
         // Refresh every 30 minutes
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
             self?.fetchWeather()
         }
-    }
-    
-    private func setupLocationAndFetch() {
-        // Immediate fallback IP geolocation
-        fetchIPLocation()
-        
-        // Check macOS Location Services
-        locationManager = CLLocationManager()
-        locationManager?.delegate = self
-        locationManager?.desiredAccuracy = kCLLocationAccuracyKilometer
-        
-        if CLLocationManager.locationServicesEnabled() {
-            let status = locationManager?.authorizationStatus ?? .notDetermined
-            if status == .authorizedAlways || status == .authorized {
-                locationManager?.startUpdatingLocation()
-            } else if status == .notDetermined {
-                locationManager?.requestWhenInUseAuthorization()
-            }
-        }
-        
-        // Initial fetch
-        fetchWeather()
-    }
-    
-    public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        let status = manager.authorizationStatus
-        if status == .authorizedAlways || status == .authorized {
-            manager.startUpdatingLocation()
-        }
-    }
-    
-    public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let loc = locations.last else { return }
-        self.currentCoords = (lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
-        
-        let geocoder = CLGeocoder()
-        geocoder.reverseGeocodeLocation(loc) { [weak self] placemarks, _ in
-            if let city = placemarks?.first?.locality ?? placemarks?.first?.name {
-                self?.currentCityName = city
-            }
-            self?.fetchWeather()
-        }
-        
-        manager.stopUpdatingLocation()
-    }
-    
-    public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        // Silent fallback to IP Geolocation
-        fetchIPLocation()
     }
     
     private func fetchIPLocation() {
@@ -148,6 +115,9 @@ public final class WeatherService: NSObject, ObservableObject, CLLocationManager
                 DispatchQueue.main.async {
                     self.currentCoords = (lat: lat, lon: lon)
                     self.currentCityName = city
+                    UserDefaults.standard.set(lat, forKey: "macbooknotch.weather.savedLat")
+                    UserDefaults.standard.set(lon, forKey: "macbooknotch.weather.savedLon")
+                    UserDefaults.standard.set(city, forKey: "macbooknotch.weather.savedCity")
                     self.fetchWeather()
                 }
             }
