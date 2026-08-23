@@ -56,6 +56,17 @@ public struct GeneralSettingsTab: View {
                 }
             }
             
+            Section(header: Text("Notch Drop Shelf & Auto-Capture").font(.headline)) {
+                Toggle("Auto-Stash Screenshots & Downloads", isOn: Binding(
+                    get: { FileShelfService.shared.isAutoCaptureEnabled },
+                    set: { FileShelfService.shared.isAutoCaptureEnabled = $0 }
+                ))
+                
+                Text("Automatically detects new screenshots and browser downloads, displaying them on your Notch Shelf for instant drag & drop and AirDrop.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
             Section(header: Text("Display Information").font(.headline)) {
                 let info = controller.displayManager.currentNotchInfo
                 HStack {
