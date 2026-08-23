@@ -120,7 +120,9 @@ public struct IslandView: View {
                 controller.handleHover(isHovering: isHovering)
             }
             .onTapGesture {
-                controller.handleIslandTap()
+                if controller.state != .expanded {
+                    controller.handleIslandTap()
+                }
             }
             .onDrop(of: [.fileURL, .url], isTargeted: $isDropTargeted) { providers in
                 var loadedURLs: [URL] = []

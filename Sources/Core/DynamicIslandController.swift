@@ -608,8 +608,8 @@ public final class DynamicIslandController: ObservableObject {
             self.updateGeometry(animated: false)
         }
         
-        // If expanded, set up auto-collapse countdown
-        if newState == .expanded {
+        // If expanded, set up auto-collapse countdown (except for interactive WhatsApp input)
+        if newState == .expanded && !(activeActivity is WhatsAppNotificationActivity) {
             let delay = (activeActivity is HelloSignatureActivity) ? 4.5 : autoCollapseDelay
             let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
                 guard let self = self, self.state == .expanded else { return }
