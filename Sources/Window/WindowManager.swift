@@ -84,6 +84,11 @@ public final class WindowManager: ObservableObject {
         shelfItem.target = self
         menu.addItem(shelfItem)
         
+        let waItem = NSMenuItem(title: "💬 Test WhatsApp Message", action: #selector(simulateWhatsAppAction), keyEquivalent: "w")
+        waItem.keyEquivalentModifierMask = [.option]
+        waItem.target = self
+        menu.addItem(waItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitAppAction), keyEquivalent: "q")
@@ -92,12 +97,16 @@ public final class WindowManager: ObservableObject {
         
         statusItem?.menu = menu
         
-        // Global hotkey monitor: Option+S (S=1), Option+D (D=2), Option+A (A=0), Option+C (C=8), Option+R (R=15), Option+H (H=4)
+        // Global hotkey monitor: Option+S (S=1), Option+W (W=13), Option+D (D=2), Option+A (A=0), Option+C (C=8), Option+R (R=15), Option+H (H=4)
         NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.modifierFlags.contains(.option) {
                 if event.keyCode == 1 { // Option+S
                     DispatchQueue.main.async {
                         self?.openShelfAction()
+                    }
+                } else if event.keyCode == 13 { // Option+W
+                    DispatchQueue.main.async {
+                        self?.simulateWhatsAppAction()
                     }
                 } else if event.keyCode == 4 { // Option+H
                     DispatchQueue.main.async {
@@ -241,6 +250,10 @@ public final class WindowManager: ObservableObject {
         let shelfAct = FileShelfActivity()
         controller.activityManager.presentActivity(shelfAct)
         controller.transition(to: .compact)
+    }
+    
+    @objc private func simulateWhatsAppAction() {
+        WhatsAppNotificationService.shared.simulateIncomingMessage()
     }
     
     @objc private func toggleVoiceMemoAction() {

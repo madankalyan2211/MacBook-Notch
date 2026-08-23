@@ -221,6 +221,14 @@ public final class ActivityManager: ObservableObject {
         }
     }
     
+    /// Removes all activities matching the given type.
+    public func removeActivities(ofType type: ActivityType) {
+        let matchingIds = activityStack.filter { $0.type == type }.map { $0.id }
+        for id in matchingIds {
+            removeActivity(id: id)
+        }
+    }
+    
     /// Clears all activities and returns to idle.
     public func clearAllActivities() {
         for timer in timeoutTimers.values {

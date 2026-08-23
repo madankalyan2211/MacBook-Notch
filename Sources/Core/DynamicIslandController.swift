@@ -545,6 +545,19 @@ public final class DynamicIslandController: ObservableObject {
             }
         }
         
+        // 15. WhatsApp Notifications integration
+        WhatsAppNotificationService.shared.onMessageReceived = { [weak self] message in
+            guard let self = self else { return }
+            let waAct = WhatsAppNotificationActivity(message: message)
+            self.activityManager.presentActivity(waAct)
+            self.transition(to: .compact)
+        }
+        
+        WhatsAppNotificationService.shared.onMessageDismissed = { [weak self] in
+            guard let self = self else { return }
+            self.activityManager.removeActivities(ofType: .whatsapp)
+        }
+        
         // Initial presentation of ambient weather with 3 minutes idle delay
         if isWeatherEnabled {
             scheduleAmbientWeatherPresentation(delay: 180.0)
