@@ -152,14 +152,26 @@ public final class DynamicIslandHostingView<Content: View>: NSHostingView<Conten
     }
     
     // Precise shape hit testing: passes clicks through to desktop & underlying apps
-    // whenever the mouse is outside the active island capsule / bubble.
+    // whenever the mouse is outside the active island capsule / bubble,
+    // while providing a generous spring-loaded drop target during file drag operations.
     public override func hitTest(_ point: NSPoint) -> NSView? {
         let controller = DynamicIslandController.shared
         let geometry = controller.currentGeometry
         
-        // In AppKit, (0,0) is bottom-left of the view.
-        // View bounds: width = bounds.width, height = bounds.height
-        // Island is attached flush to the top edge (y = bounds.height)
+        // During Drag operations (mouse button is pressed and dragging files), provide an accessible drop target
+        if FileShelfService.shared.isDropTargeted || NSEvent.pressedMouseButtons != 0 {
+            let topY = bounds.height
+            let dropHeight = max(geometry.height, 50.0)
+            let dropWidth = max(geometry.width, 340.0)
+            let minX = (bounds.width - dropWidth) / 2.0
+            let maxX = (bounds.width + dropWidth) / 2.0
+            let dropRect = NSRect(x: minX, y: topY - dropHeight, width: maxX - minX, height: dropHeight)
+            if dropRect.contains(point) {
+                return self
+            }
+        }
+        
+        // Standard normal click hit testing (exact capsule shape, zero cushion so Chrome clicks pass through)
         let topY = bounds.height
         let bottomY = topY - max(geometry.height, 30.5)
         
@@ -167,7 +179,6 @@ public final class DynamicIslandHostingView<Content: View>: NSHostingView<Conten
         let hasSecondary = (controller.state == .compact && controller.activityManager.secondaryActivity != nil)
         let bubbleExtraRight: CGFloat = hasSecondary ? (geometry.height + 20.0) : 0
         
-        // Main island is centered at bounds.width / 2.0
         let minX = (bounds.width - mainWidth) / 2.0
         let maxX = (bounds.width + mainWidth) / 2.0 + bubbleExtraRight
         
