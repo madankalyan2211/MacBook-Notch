@@ -238,9 +238,9 @@ public final class WindowManager: ObservableObject {
     }
     
     @objc private func openShelfAction() {
-        let shelfAct = FileShelfActivity(files: FileShelfService.shared.files)
+        let shelfAct = FileShelfActivity()
         controller.activityManager.presentActivity(shelfAct)
-        controller.transition(to: .expanded)
+        controller.transition(to: .compact)
     }
     
     @objc private func toggleVoiceMemoAction() {
