@@ -15,7 +15,7 @@ public final class WeatherActivity: DynamicIslandActivity, ObservableObject {
     public var tintColor: Color { weather.tintColor }
     public var progress: Double? { nil }
     
-    public var compactPreferredWidth: CGFloat { 260 }
+    public var compactPreferredWidth: CGFloat { 330 }
     public var expandedPreferredSize: CGSize { CGSize(width: 385, height: 145) }
     
     public init(id: String = "activity.weather", weather: WeatherData = .fallback) {
@@ -55,11 +55,19 @@ public struct WeatherCompactLeadingView: View {
     public let namespace: Namespace.ID?
     
     public var body: some View {
-        Image(systemName: activity.weather.iconName)
-            .font(.system(size: 13.5, weight: .semibold))
-            .foregroundColor(activity.weather.tintColor)
-            .padding(.leading, 8)
-            .matchedGeometryIfAvailable(id: "weather_icon_\(activity.id)", in: namespace)
+        HStack(spacing: 5) {
+            Image(systemName: activity.weather.iconName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(activity.weather.tintColor)
+            
+            Text(activity.weather.cityName)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .padding(.leading, 8)
+        .matchedGeometryIfAvailable(id: "weather_icon_\(activity.id)", in: namespace)
     }
 }
 
@@ -71,9 +79,9 @@ public struct WeatherCompactTrailingView: View {
         HStack(spacing: 5) {
             Text("\(activity.weather.temperature)°")
                 .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+                .foregroundColor(activity.weather.tintColor)
                 .lineLimit(1)
-                .fixedSize()
+                .fixedSize(horizontal: true, vertical: false)
             
             Circle()
                 .fill(activity.weather.aqiColor)

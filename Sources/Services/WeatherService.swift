@@ -95,8 +95,28 @@ public final class WeatherService: NSObject, ObservableObject, CLLocationManager
         locationManager?.requestWhenInUseAuthorization()
         locationManager?.startUpdatingLocation()
         
-        // Initial fetch with default/cached coordinates
+        // Immediate IP geolocation for instant zero-permission accurate city & coords
+        fetchIPLocation()
+        
+        // Initial fetch
         fetchWeather()
+    }
+    
+    private func fetchIPLocation() {
+        guard let url = URL(string: "http://ip-api.com/json") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            guard let self = self, let data = data, error == nil else { return }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let lat = json["lat"] as? Double,
+               let lon = json["lon"] as? Double,
+               let city = json["city"] as? String {
+                DispatchQueue.main.async {
+                    self.currentCoords = (lat: lat, lon: lon)
+                    self.currentCityName = city
+                    self.fetchWeather()
+                }
+            }
+        }.resume()
     }
     
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
