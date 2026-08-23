@@ -15,8 +15,26 @@ public final class WhatsAppNotificationActivity: DynamicIslandActivity, Observab
     public var tintColor: Color { Color(red: 0.15, green: 0.83, blue: 0.40) } // WhatsApp emerald green
     public var progress: Double? { nil }
     
-    public var compactPreferredWidth: CGFloat { 375 }
-    public var expandedPreferredSize: CGSize { CGSize(width: 395, height: 145) }
+    public var compactPreferredWidth: CGFloat {
+        let nameCharCount = CGFloat(message.senderName.count)
+        let textSnippetCount = CGFloat(min(message.messageText.count, 24))
+        
+        // Base notch width (~195pt) + left wing (icon + name) + right wing (snippet + status dot)
+        let leftWingWidth = (nameCharCount * 8.2) + 38.0
+        let rightWingWidth = (textSnippetCount * 7.2) + 32.0
+        let totalCalculated = 195.0 + leftWingWidth + rightWingWidth
+        
+        // Dynamic adaptive clamp between 365 pt and 530 pt
+        return max(365.0, min(530.0, totalCalculated))
+    }
+    
+    public var expandedPreferredSize: CGSize {
+        let nameCharCount = CGFloat(message.senderName.count)
+        let cardWidth = max(395.0, min(480.0, 360.0 + (nameCharCount * 4.0)))
+        let isLongMessage = message.messageText.count > 60
+        let cardHeight: CGFloat = isLongMessage ? 160.0 : 145.0
+        return CGSize(width: cardWidth, height: cardHeight)
+    }
     
     public init(message: WhatsAppMessage) {
         self.id = "activity.whatsapp.\(message.id)"
@@ -81,11 +99,11 @@ public struct WhatsAppCompactTrailingView: View {
                 .font(.system(size: 12, weight: .regular, design: .rounded))
                 .foregroundColor(.white.opacity(0.85))
                 .lineLimit(1)
-                .frame(maxWidth: 120, alignment: .trailing)
+                .frame(maxWidth: 160, alignment: .trailing)
             
             Circle()
                 .fill(activity.tintColor)
-                .frame(width: 6, height: 6)
+                .frame(width: 6.5, height: 6.5)
         }
         .padding(.trailing, 8)
         .matchedGeometryIfAvailable(id: "whatsapp_trailing_\(activity.id)", in: namespace)
