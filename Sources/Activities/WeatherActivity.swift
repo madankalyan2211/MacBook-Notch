@@ -99,26 +99,44 @@ public struct WeatherExpandedCardView: View {
     
     private var w: WeatherData { activity.weather }
     
+    private func openMacOSWeatherApp() {
+        if let weatherURL = URL(string: "weather://") {
+            NSWorkspace.shared.open(weatherURL)
+        } else {
+            let appUrl = URL(fileURLWithPath: "/System/Applications/Weather.app")
+            NSWorkspace.shared.openApplication(at: appUrl, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+        }
+    }
+    
     public var body: some View {
         VStack(spacing: 9) {
-            // Header Row: City, Condition, Temperature & AQI badge
+            // Header Row: City, Condition, Temperature & AQI badge + Open macOS Weather.app
             HStack(alignment: .center) {
-                HStack(spacing: 8) {
-                    Image(systemName: w.iconName)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(w.tintColor)
-                        .matchedGeometryIfAvailable(id: "weather_icon_\(activity.id)", in: namespace)
-                    
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(w.cityName)
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
+                Button(action: openMacOSWeatherApp) {
+                    HStack(spacing: 8) {
+                        Image(systemName: w.iconName)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(w.tintColor)
+                            .matchedGeometryIfAvailable(id: "weather_icon_\(activity.id)", in: namespace)
                         
-                        Text("\(w.conditionText) • H:\(w.highTemp)° L:\(w.lowTemp)°")
-                            .font(.system(size: 11, weight: .regular, design: .rounded))
-                            .foregroundColor(.white.opacity(0.65))
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text(w.cityName)
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                
+                                Image(systemName: "arrow.up.forward.app.fill")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                            
+                            Text("\(w.conditionText) • H:\(w.highTemp)° L:\(w.lowTemp)°")
+                                .font(.system(size: 11, weight: .regular, design: .rounded))
+                                .foregroundColor(.white.opacity(0.65))
+                        }
                     }
                 }
+                .buttonStyle(.plain)
                 
                 Spacer()
                 
@@ -176,7 +194,7 @@ public struct WeatherExpandedCardView: View {
             }
             .padding(.horizontal, 2)
             
-            // Quick metrics footer (Humidity, Wind, UV)
+            // Quick metrics footer (Humidity, Wind, UV, and macOS Weather app launcher)
             HStack(spacing: 8) {
                 WeatherMetricTag(icon: "humidity.fill", text: "\(w.humidity)%")
                 WeatherMetricTag(icon: "wind", text: "\(w.windSpeed) \(w.isFahrenheit ? "mph" : "km/h")")
