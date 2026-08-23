@@ -543,6 +543,25 @@ public final class DynamicIslandController: ObservableObject {
         if isWeatherEnabled {
             scheduleAmbientWeatherPresentation(delay: 180.0)
         }
+        
+        // 14. Notch Pet Companion integration
+        NotchPetService.shared.onStateUpdated = { [weak self] in
+            guard let self = self else { return }
+            if self.isNotchPetEnabled && NotchPetService.shared.isEnabled {
+                if self.activityManager.getActivity(id: "activity.pet") == nil {
+                    let petAct = PetActivity()
+                    self.activityManager.presentActivity(petAct)
+                }
+            } else {
+                self.activityManager.removeActivity(id: "activity.pet")
+            }
+        }
+        
+        // Initial presentation of Notch Pet if enabled
+        if isNotchPetEnabled && NotchPetService.shared.isEnabled {
+            let petAct = PetActivity()
+            self.activityManager.presentActivity(petAct)
+        }
     }
     
     /// Schedules ambient weather presentation after a sustained idle period (3 minutes / 180s)
