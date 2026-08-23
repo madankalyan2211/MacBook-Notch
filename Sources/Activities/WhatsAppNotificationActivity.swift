@@ -17,22 +17,27 @@ public final class WhatsAppNotificationActivity: DynamicIslandActivity, Observab
     
     public var compactPreferredWidth: CGFloat {
         let nameCharCount = CGFloat(message.senderName.count)
-        let textSnippetCount = CGFloat(min(message.messageText.count, 24))
+        let textSnippetCount = CGFloat(min(message.messageText.count, 22))
         
-        // Base notch width (~195pt) + left wing (icon + name) + right wing (snippet + status dot)
-        let leftWingWidth = (nameCharCount * 8.2) + 38.0
-        let rightWingWidth = (textSnippetCount * 7.2) + 32.0
-        let totalCalculated = 195.0 + leftWingWidth + rightWingWidth
+        // Base hardware notch width is ~195pt.
+        // In CompactIslandView, the physical notch sits in the center:
+        // Left Wing needs: Icon (16pt) + Spacing (6pt) + Text (nameCharCount * 9.2pt) + Padding (16pt)
+        let leftWingRequired = (nameCharCount * 9.2) + 42.0
+        let rightWingRequired = (textSnippetCount * 7.5) + 38.0
+        let maxWing = max(leftWingRequired, rightWingRequired)
         
-        // Dynamic adaptive clamp between 365 pt and 530 pt
-        return max(365.0, min(530.0, totalCalculated))
+        // Symmetrical capsule expansion around the notch center
+        let totalCalculated = 195.0 + (maxWing * 2.0)
+        
+        // Dynamic clamp between 390 pt and 620 pt
+        return max(390.0, min(620.0, totalCalculated))
     }
     
     public var expandedPreferredSize: CGSize {
         let nameCharCount = CGFloat(message.senderName.count)
-        let cardWidth = max(395.0, min(480.0, 360.0 + (nameCharCount * 4.0)))
-        let isLongMessage = message.messageText.count > 60
-        let cardHeight: CGFloat = isLongMessage ? 160.0 : 145.0
+        let cardWidth = max(420.0, min(560.0, 380.0 + (nameCharCount * 6.5)))
+        let isLongMessage = message.messageText.count > 50
+        let cardHeight: CGFloat = isLongMessage ? 165.0 : 148.0
         return CGSize(width: cardWidth, height: cardHeight)
     }
     

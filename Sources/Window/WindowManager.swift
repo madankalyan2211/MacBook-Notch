@@ -353,8 +353,8 @@ public final class WindowManager: ObservableObject {
         let notchInfo = controller.displayManager.currentNotchInfo
         let screenFrame = notchInfo.screenFrame
         
-        let windowWidth: CGFloat = 480
-        let windowHeight: CGFloat = 260
+        let windowWidth: CGFloat = 680
+        let windowHeight: CGFloat = 280
         let windowX = screenFrame.midX - (windowWidth / 2.0)
         let windowY = screenFrame.maxY - windowHeight
         
@@ -453,8 +453,8 @@ public final class WindowManager: ObservableObject {
         let notchInfo = controller.displayManager.currentNotchInfo
         let screenFrame = notchInfo.screenFrame
         
-        let windowWidth: CGFloat = 540
-        let windowHeight: CGFloat = 260
+        let windowWidth: CGFloat = 680
+        let windowHeight: CGFloat = 280
         let notchCenterX = notchInfo.hasPhysicalNotch ? (notchInfo.notchOrigin.x + (notchInfo.notchSize.width / 2.0)) : screenFrame.midX
         let windowX = notchCenterX - (windowWidth / 2.0)
         let windowY = screenFrame.maxY - windowHeight
