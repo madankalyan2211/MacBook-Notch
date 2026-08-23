@@ -52,6 +52,7 @@ public struct ContinuousNotchIslandShape: Shape {
 /// Dynamic Island Root Shell: Pure OLED Solid Black (Zero grey tint, stroke, or shadow halos)
 public struct IslandView: View {
     @ObservedObject public var controller: DynamicIslandController
+    @ObservedObject private var shelfService = FileShelfService.shared
     @Namespace private var islandAnimationNamespace
     
     @State private var dragOffset: CGFloat = 0
@@ -88,7 +89,7 @@ public struct IslandView: View {
                     .clipShape(islandShape)
                 
                 // Spring-Loaded Drop Zone Overlay when dragging files to Notch
-                if isDropTargeted {
+                if isDropTargeted || shelfService.isDropTargeted {
                     islandShape
                         .stroke(
                             LinearGradient(
