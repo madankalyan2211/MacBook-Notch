@@ -29,7 +29,7 @@ public final class VolumeActivity: DynamicIslandActivity, ObservableObject {
     public var progress: Double? { isSilent ? 0 : level }
     
     public var compactPreferredWidth: CGFloat {
-        isSilent ? 280 : 256
+        isSilent ? 330 : 256
     }
     
     public var expandedPreferredSize: CGSize { CGSize(width: 350, height: 120) }
@@ -73,7 +73,7 @@ public struct VolumeCompactLeadingView: View {
         Image(systemName: activity.iconName)
             .font(.system(size: 13.5, weight: .bold))
             .foregroundColor(activity.tintColor)
-            .padding(.leading, activity.isSilent ? 7 : 1.5)
+            .padding(.leading, activity.isSilent ? 8 : 1.5)
             .matchedGeometryIfAvailable(id: "hud_vol_icon_\(activity.id)", in: namespace)
     }
 }
@@ -90,7 +90,7 @@ public struct VolumeCompactTrailingView: View {
                     .foregroundColor(activity.tintColor)
                     .lineLimit(1)
                     .fixedSize()
-                    .padding(.trailing, 7)
+                    .padding(.trailing, 8)
                     .matchedGeometryIfAvailable(id: "hud_vol_ring_\(activity.id)", in: namespace)
             } else {
                 ZStack {
