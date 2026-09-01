@@ -118,10 +118,17 @@ public final class CallMonitorService: ObservableObject {
                 let detected = detectActiveCallingApp()
                 if detected.isKnownCallApp && detected.callerName != "Audio Call" && detected.callerName != "Video Call" {
                     if call.callerName != detected.callerName {
-                        call.callerName = detected.callerName
-                        self.activeCall = call
-                        DispatchQueue.main.async { [weak self] in
-                            self?.onCallUpdated?(call)
+                        // FIX: Don't change WhatsApp caller name mid-call if it's already set to a real name
+                        // because getLastWhatsAppPartnerName() returns the sender of the most recent text message.
+                        let isWhatsApp = detected.appName.contains("WhatsApp")
+                        let isGenericName = call.callerName == "WhatsApp Contact" || call.callerName == "Audio Call"
+                        
+                        if !isWhatsApp || isGenericName {
+                            call.callerName = detected.callerName
+                            self.activeCall = call
+                            DispatchQueue.main.async { [weak self] in
+                                self?.onCallUpdated?(call)
+                            }
                         }
                     }
                 }

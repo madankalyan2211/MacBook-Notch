@@ -56,8 +56,8 @@ public struct WeatherData: Sendable {
     }
 }
 
-/// Service managing ambient live weather & air quality telemetry via silent IP geolocation
-public final class WeatherService: NSObject, ObservableObject {
+/// Service managing ambient live weather & air quality telemetry via CoreLocation
+public final class WeatherService: NSObject, ObservableObject, CLLocationManagerDelegate {
     public static let shared = WeatherService()
     
     @Published public private(set) var currentWeather: WeatherData = .fallback
@@ -73,6 +73,7 @@ public final class WeatherService: NSObject, ObservableObject {
     private var currentCoords: (lat: Double, lon: Double)
     private var currentCityName: String
     private var refreshTimer: Timer?
+    private let locationManager = CLLocationManager()
     
     private override init() {
         let storedF = UserDefaults.standard.object(forKey: "macbooknotch.weather.isFahrenheit") as? Bool ?? true
@@ -92,8 +93,9 @@ public final class WeatherService: NSObject, ObservableObject {
         
         super.init()
         
-        // Fetch location silently via IP without triggering macOS Location permission dialogs
-        fetchIPLocation()
+        locationManager.delegate = self
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.startUpdatingLocation()
         
         // Initial fetch
         fetchWeather()
@@ -104,24 +106,31 @@ public final class WeatherService: NSObject, ObservableObject {
         }
     }
     
-    private func fetchIPLocation() {
-        guard let url = URL(string: "http://ip-api.com/json") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
-            guard let self = self, let data = data, error == nil else { return }
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let lat = json["lat"] as? Double,
-               let lon = json["lon"] as? Double,
-               let city = json["city"] as? String {
-                DispatchQueue.main.async {
-                    self.currentCoords = (lat: lat, lon: lon)
-                    self.currentCityName = city
-                    UserDefaults.standard.set(lat, forKey: "macbooknotch.weather.savedLat")
-                    UserDefaults.standard.set(lon, forKey: "macbooknotch.weather.savedLon")
-                    UserDefaults.standard.set(city, forKey: "macbooknotch.weather.savedCity")
-                    self.fetchWeather()
-                }
+    public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        let lat = location.coordinate.latitude
+        let lon = location.coordinate.longitude
+        
+        // Stop updating to save battery, we only need it periodically
+        manager.stopUpdatingLocation()
+        
+        CLGeocoder().reverseGeocodeLocation(location) { [weak self] placemarks, error in
+            guard let self = self else { return }
+            let city = placemarks?.first?.locality ?? "Current Location"
+            
+            DispatchQueue.main.async {
+                self.currentCoords = (lat: lat, lon: lon)
+                self.currentCityName = city
+                UserDefaults.standard.set(lat, forKey: "macbooknotch.weather.savedLat")
+                UserDefaults.standard.set(lon, forKey: "macbooknotch.weather.savedLon")
+                UserDefaults.standard.set(city, forKey: "macbooknotch.weather.savedCity")
+                self.fetchWeather()
             }
-        }.resume()
+        }
+    }
+    
+    public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Location manager failed: \(error)")
     }
     
     public func fetchWeather() {

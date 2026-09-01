@@ -26,6 +26,8 @@
     <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>Dynamic Island needs permission to display and control Spotify and Apple Music playback.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>MacBook Notch uses Bluetooth to detect connected AirPods and show battery and connection status.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>MacBook Notch uses your location to show accurate local weather and air quality.</string>
     <key>NSLocationUsageDescription</key>

@@ -26,7 +26,14 @@ public final class MusicActivity: DynamicIslandActivity, ObservableObject {
     
     public var subtitle: String { artist }
     public var iconName: String { "music.note" }
-    public var tintColor: Color { Color(red: 0.18, green: 0.82, blue: 0.35) }
+    public var tintColor: Color {
+        if sourceApp == "Apple Music" {
+            return Color(red: 0.98, green: 0.18, blue: 0.35)
+        } else if sourceApp == "YouTube" {
+            return Color(red: 1.0, green: 0.1, blue: 0.1)
+        }
+        return Color(red: 0.18, green: 0.82, blue: 0.35)
+    }
     
     public var progress: Double? {
         guard duration > 0 else { return 0 }
@@ -185,7 +192,7 @@ public struct MusicCompactLeadingView: View {
         }
         .frame(width: 21, height: 21)
         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-        .offset(x: -4)
+        .padding(.leading, 4)
         .matchedGeometryIfAvailable(id: "music_art_\(activity.id)", in: namespace)
     }
 }
@@ -196,7 +203,7 @@ public struct MusicCompactTrailingView: View {
     public let namespace: Namespace.ID?
     
     public var body: some View {
-        MusicWaveformIndicator(isPlaying: activity.isPlaying)
+        MusicWaveformIndicator(isPlaying: activity.isPlaying, tintColor: activity.tintColor)
             .padding(.trailing, 2.5)
             .matchedGeometryIfAvailable(id: "music_wave_\(activity.id)", in: namespace)
     }
@@ -205,6 +212,7 @@ public struct MusicCompactTrailingView: View {
 /// Animated 4-Bar Audio Equalizer Waveform Indicator
 public struct MusicWaveformIndicator: View {
     public let isPlaying: Bool
+    public var tintColor: Color = Color(red: 0.18, green: 0.82, blue: 0.35)
     
     @State private var barHeights: [CGFloat] = [0.35, 0.75, 1.0, 0.55]
     private let timer = Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()
@@ -213,7 +221,7 @@ public struct MusicWaveformIndicator: View {
         HStack(spacing: 2.2) {
             ForEach(0..<4) { index in
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(Color(red: 0.18, green: 0.82, blue: 0.35))
+                    .fill(tintColor)
                     .frame(width: 2.6, height: isPlaying ? max(3.5, 16.5 * barHeights[index]) : 3.5)
                     .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isPlaying ? barHeights[index] : 0)
             }
@@ -257,6 +265,17 @@ public struct MusicExpandedCardView: View {
                                 .font(.system(size: 27, weight: .semibold))
                                 .foregroundColor(.white)
                         }
+                    } else if activity.sourceApp == "Apple Music" {
+                        ZStack {
+                            LinearGradient(
+                                colors: [Color(red: 0.98, green: 0.18, blue: 0.35), Color(red: 0.85, green: 0.08, blue: 0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            Image(systemName: "music.note")
+                                .font(.system(size: 24, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.95))
+                        }
                     } else {
                         ZStack {
                             LinearGradient(
@@ -297,7 +316,7 @@ public struct MusicExpandedCardView: View {
                 
                 Spacer()
                 
-                MusicWaveformIndicator(isPlaying: activity.isPlaying)
+                MusicWaveformIndicator(isPlaying: activity.isPlaying, tintColor: activity.tintColor)
                     .frame(width: 22, height: 18)
                     .matchedGeometryIfAvailable(id: "music_wave_\(activity.id)", in: namespace)
             }
@@ -345,6 +364,7 @@ public struct MusicExpandedCardView: View {
             }
         }
         .padding(.horizontal, 4)
+        .padding(.leading, 6)
     }
 }
 
@@ -383,7 +403,7 @@ public struct MusicScrubberView: View {
                     
                     // Filled Progress Bar
                     Capsule()
-                        .fill(Color(red: 0.18, green: 0.82, blue: 0.35))
+                        .fill(activity.tintColor)
                         .frame(width: width * CGFloat(clampedProg), height: 5)
                     
                     // Draggable Scrubber Thumb Dot

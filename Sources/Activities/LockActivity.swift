@@ -27,7 +27,9 @@ public final class LockActivity: DynamicIslandActivity, ObservableObject {
     
     public var progress: Double? { nil }
     
-    public var compactPreferredWidth: CGFloat { 258 }
+    public var compactPreferredWidth: CGFloat {
+        isLocked ? 240 : 320
+    }
     public var expandedPreferredSize: CGSize { CGSize(width: 390, height: 120) }
     
     public init(id: String = "hud.lock", isLocked: Bool = false, timeout: TimeInterval? = 2.5) {
@@ -76,12 +78,12 @@ public struct LockCompactTrailingView: View {
     public let namespace: Namespace.ID?
     
     public var body: some View {
-        Text("Unlocked")
+        Text(activity.isLocked ? "Locked" : "Unlocked")
             .font(.system(size: 12.5, weight: .semibold, design: .rounded))
             .foregroundColor(activity.tintColor)
             .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.trailing, 8)
+            .layoutPriority(1)
+            .padding(.trailing, 6)
             .matchedGeometryIfAvailable(id: "hud_lock_badge_\(activity.id)", in: namespace)
     }
 }

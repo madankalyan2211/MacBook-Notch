@@ -224,18 +224,6 @@ public final class WhatsAppNotificationService: ObservableObject {
     public func sendReply(text: String, completion: (() -> Void)? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        
-        // 1. Copy reply text to clipboard for instant access
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(trimmed, forType: .string)
-        
-        // 2. Open WhatsApp conversation with text
-        if let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-           let url = URL(string: "whatsapp://send?text=\(encoded)") {
-            NSWorkspace.shared.open(url)
-        }
-        
         completion?()
     }
     

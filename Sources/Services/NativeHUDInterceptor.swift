@@ -70,6 +70,13 @@ public final class NativeHUDInterceptor {
         let mask = CGEventMask(1 << 14)
         
         let tapCallback: CGEventTapCallBack = { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                if let tap = NativeHUDInterceptor.shared.eventTap {
+                    CGEvent.tapEnable(tap: tap, enable: true)
+                }
+                return nil
+            }
+            
             if type.rawValue == 14 { // NX_SYSDEFINED
                 if let nsEvent = NSEvent(cgEvent: event), nsEvent.type == .systemDefined, nsEvent.subtype.rawValue == 8 {
                     let data1 = nsEvent.data1
@@ -110,15 +117,18 @@ public final class NativeHUDInterceptor {
                         }
                     }
                 }
-            } else if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                if let tap = NativeHUDInterceptor.shared.eventTap {
-                    CGEvent.tapEnable(tap: tap, enable: true)
-                }
             }
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
         
         guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: tapCallback,
+            userInfo: nil
+        ) ?? CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
@@ -186,14 +196,19 @@ public final class NativeHUDInterceptor {
     }
     
     private func applyOSDPrefs(suppress: Bool) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+        let p1 = Process()
+        p1.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
         if suppress {
-            process.arguments = ["write", "com.apple.OSDUIHelper", "hideOSD", "-bool", "true"]
+            p1.arguments = ["write", "com.apple.OSDUIHelper", "hideOSD", "-bool", "true"]
         } else {
-            process.arguments = ["delete", "com.apple.OSDUIHelper", "hideOSD"]
+            p1.arguments = ["delete", "com.apple.OSDUIHelper", "hideOSD"]
         }
-        try? process.run()
+        try? p1.run()
+        
+        let p2 = Process()
+        p2.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        p2.arguments = ["OSDUIHelper"]
+        try? p2.run()
     }
     
     private func resetMapping() {

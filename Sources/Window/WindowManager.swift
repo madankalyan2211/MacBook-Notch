@@ -84,10 +84,11 @@ public final class WindowManager: ObservableObject {
         shelfItem.target = self
         menu.addItem(shelfItem)
         
-        let waItem = NSMenuItem(title: "💬 Test WhatsApp Message", action: #selector(simulateWhatsAppAction), keyEquivalent: "w")
-        waItem.keyEquivalentModifierMask = [.option]
-        waItem.target = self
-        menu.addItem(waItem)
+        // WhatsApp messaging disabled
+        // let waItem = NSMenuItem(title: "💬 Test WhatsApp Message", action: #selector(simulateWhatsAppAction), keyEquivalent: "w")
+        // waItem.keyEquivalentModifierMask = [.option]
+        // waItem.target = self
+        // menu.addItem(waItem)
         
         menu.addItem(NSMenuItem.separator())
         
@@ -104,10 +105,8 @@ public final class WindowManager: ObservableObject {
                     DispatchQueue.main.async {
                         self?.openShelfAction()
                     }
-                } else if event.keyCode == 13 { // Option+W
-                    DispatchQueue.main.async {
-                        self?.simulateWhatsAppAction()
-                    }
+                } else if event.keyCode == 13 { // Option+W (WhatsApp disabled)
+                    // DispatchQueue.main.async { self?.simulateWhatsAppAction() }
                 } else if event.keyCode == 4 { // Option+H
                     DispatchQueue.main.async {
                         self?.playHelloAction()
@@ -253,7 +252,8 @@ public final class WindowManager: ObservableObject {
     }
     
     @objc private func simulateWhatsAppAction() {
-        WhatsAppNotificationService.shared.simulateIncomingMessage()
+        // WhatsApp messaging disabled
+        // WhatsAppNotificationService.shared.simulateIncomingMessage()
     }
     
     @objc private func toggleVoiceMemoAction() {
@@ -430,6 +430,8 @@ public final class WindowManager: ObservableObject {
     }
     
     private func setupObservers() {
+        SiriMonitorService.shared.startMonitoring()
+        
         // Observe display changes to re-center window canvas if screen resolution/monitor changes
         controller.displayManager.$currentNotchInfo
             .receive(on: DispatchQueue.main)

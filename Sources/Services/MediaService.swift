@@ -53,8 +53,8 @@ public final class MediaService: ObservableObject {
         setupDistributedObservers()
         checkActiveMediaOnLaunch()
         
-        // Polling sync timer (every 1.0s) for real-time track updates
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+        // Polling sync timer (every 0.5s) for real-time track updates
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.checkActiveMediaOnLaunch()
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -151,11 +151,17 @@ public final class MediaService: ObservableObject {
     }
     
     private func updateTrackState(_ newTrack: MediaTrackInfo) {
-        let shouldFetchArtwork = (newTrack.artworkUrl != nil && newTrack.artworkUrl != self.currentTrack.artworkUrl) || (self.currentTrack.artwork == nil && newTrack.artworkUrl != nil)
+        let isHttpUrl = newTrack.artworkUrl?.starts(with: "http") == true
+        let shouldFetchArtwork = (isHttpUrl && newTrack.artworkUrl != self.currentTrack.artworkUrl) || (self.currentTrack.artwork == nil && isHttpUrl)
         
         var trackToSet = newTrack
-        if let cached = artworkCache[newTrack.artworkUrl ?? ""] {
+        if let key = newTrack.artworkUrl, let cached = artworkCache[key] {
             trackToSet.artwork = cached
+        } else if let directArt = newTrack.artwork {
+            trackToSet.artwork = directArt
+            if let key = newTrack.artworkUrl {
+                artworkCache[key] = directArt
+            }
         }
         
         self.currentTrack = trackToSet
@@ -172,7 +178,7 @@ public final class MediaService: ObservableObject {
             
             DispatchQueue.main.async {
                 self?.artworkCache[forUrlKey] = image
-                if self?.currentTrack.artworkUrl == forUrlKey {
+                if self?.currentTrack.artworkUrl == forUrlKey || (self?.currentTrack.artwork == nil && self?.currentTrack.sourceApp == "Apple Music") {
                     self?.currentTrack.artwork = image
                 }
             }
@@ -284,20 +290,83 @@ public final class MediaService: ObservableObject {
         let title = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
         
+        let artist = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        let album = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
         let exactDuration = Double(parts[4]) ?? 180
         let exactElapsedTime = Double(parts[5]) ?? 0
         
+        let trackKey = "apple_music:\(title):\(artist):\(album)"
+        var trackArtwork: NSImage? = artworkCache[trackKey]
+        
+        if trackArtwork == nil {
+            if let directArt = fetchAppleMusicArtwork() {
+                artworkCache[trackKey] = directArt
+                trackArtwork = directArt
+            } else {
+                searchiTunesArtwork(title: title, artist: artist, album: album, cacheKey: trackKey)
+            }
+        }
+        
         return MediaTrackInfo(
             title: title,
-            artist: parts[1].trimmingCharacters(in: .whitespacesAndNewlines),
-            album: parts[2].trimmingCharacters(in: .whitespacesAndNewlines),
+            artist: artist,
+            album: album,
             isPlaying: isPlaying,
             duration: exactDuration,
             elapsedTime: exactElapsedTime,
-            artwork: nil,
-            artworkUrl: nil,
+            artwork: trackArtwork,
+            artworkUrl: trackKey,
             sourceApp: "Apple Music"
         )
+    }
+    
+    private func fetchAppleMusicArtwork() -> NSImage? {
+        let script = """
+        tell application "Music"
+            tell current track
+                if (count of artworks) > 0 then
+                    return raw data of artwork 1
+                end if
+            end tell
+        end tell
+        return ""
+        """
+        var error: NSDictionary?
+        if let appleScript = NSAppleScript(source: script) {
+            let descriptor = appleScript.executeAndReturnError(&error)
+            if error == nil {
+                let data = descriptor.data
+                if !data.isEmpty, let image = NSImage(data: data) {
+                    return image
+                }
+            }
+        }
+        return nil
+    }
+    
+    private func searchiTunesArtwork(title: String, artist: String, album: String, cacheKey: String) {
+        guard !title.isEmpty else { return }
+        let cleanTitle = title.components(separatedBy: " (feat.")[0].components(separatedBy: " [feat.")[0]
+        let query = "\(cleanTitle) \(artist)"
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://itunes.apple.com/search?term=\(encoded)&media=music&entity=song&limit=1") else {
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            guard let self = self, let data = data, error == nil else { return }
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let results = json["results"] as? [[String: Any]],
+                   let first = results.first,
+                   let artUrl100 = first["artworkUrl100"] as? String {
+                    let highRes = artUrl100.replacingOccurrences(of: "100x100bb", with: "600x600bb")
+                    if let artUrl = URL(string: highRes) {
+                        self.downloadArtwork(from: artUrl, forUrlKey: cacheKey)
+                    }
+                }
+            } catch {}
+        }.resume()
     }
     
     private func isSystemAudioPlaying() -> Bool {
@@ -338,9 +407,13 @@ public final class MediaService: ObservableObject {
             repeat with w in windows
                 repeat with t in tabs of w
                     set tabUrl to URL of t
-                    if tabUrl contains "youtube.com" then
+                    if tabUrl contains "youtube.com/watch" then
                         set tabTitle to title of t
-                        return tabTitle & "|||" & tabUrl
+                        set isPaused to "UNKNOWN"
+                        try
+                            set isPaused to execute t javascript "document.querySelector('video') ? document.querySelector('video').paused.toString() : 'UNKNOWN'"
+                        end try
+                        return tabTitle & "|||" & tabUrl & "|||" & isPaused
                     end if
                 end repeat
             end repeat
@@ -352,7 +425,16 @@ public final class MediaService: ObservableObject {
         let parts = output.components(separatedBy: "|||")
         guard parts.count >= 2 else { return nil }
         
-        let isPlaying = isSystemAudioPlaying()
+        // Accurate playback state via JS injection (Requires View > Developer > Allow JavaScript from Apple Events)
+        let isPlaying: Bool
+        if parts.count >= 3 && parts[2] == "false" {
+            isPlaying = true
+        } else if parts.count >= 3 && parts[2] == "true" {
+            isPlaying = false
+        } else {
+            // Fallback to inaccurate system audio check (spins down after 15-30s)
+            isPlaying = isSystemAudioPlaying()
+        }
         
         var rawTitle = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
         if rawTitle.hasSuffix(" - YouTube") {

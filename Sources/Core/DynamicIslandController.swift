@@ -99,6 +99,14 @@ public final class DynamicIslandController: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+        
+        // Synchronize native HUD suppression preference
+        $isNativeHUDSuppressionEnabled
+            .receive(on: DispatchQueue.main)
+            .sink { enabled in
+                NativeHUDInterceptor.shared.setEnabled(enabled)
+            }
+            .store(in: &cancellables)
     }
     
     private func setupServicesIntegration() {
@@ -110,12 +118,13 @@ public final class DynamicIslandController: ObservableObject {
                 guard let self = self, self.isMusicEnabled else { return }
                 
                 if let existing = self.activityManager.getActivity(id: "activity.music") as? MusicActivity {
+                    let titleChanged = (existing.title != track.title)
                     existing.title = track.title
                     existing.artist = track.artist
                     existing.album = track.album
                     existing.isPlaying = isPlaying
                     existing.duration = track.duration
-                    if track.title != existing.title {
+                    if titleChanged {
                         existing.elapsedTime = track.elapsedTime
                     } else if track.elapsedTime > 0 && abs(existing.elapsedTime - track.elapsedTime) > 2.0 {
                         existing.elapsedTime = track.elapsedTime
@@ -545,18 +554,18 @@ public final class DynamicIslandController: ObservableObject {
             }
         }
         
-        // 15. WhatsApp Notifications integration
-        WhatsAppNotificationService.shared.onMessageReceived = { [weak self] message in
-            guard let self = self else { return }
-            let waAct = WhatsAppNotificationActivity(message: message)
-            self.activityManager.promoteTemporarily(activity: waAct, duration: 6.5, fallbackId: nil)
-            self.transition(to: .compact)
-        }
-        
-        WhatsAppNotificationService.shared.onMessageDismissed = { [weak self] in
-            guard let self = self else { return }
-            self.activityManager.removeActivities(ofType: .whatsapp)
-        }
+        // 15. WhatsApp Notifications integration (disabled)
+        // WhatsAppNotificationService.shared.onMessageReceived = { [weak self] message in
+        //     guard let self = self else { return }
+        //     let waAct = WhatsAppNotificationActivity(message: message)
+        //     self.activityManager.promoteTemporarily(activity: waAct, duration: 6.5, fallbackId: nil)
+        //     self.transition(to: .compact)
+        // }
+        //
+        // WhatsAppNotificationService.shared.onMessageDismissed = { [weak self] in
+        //     guard let self = self else { return }
+        //     self.activityManager.removeActivities(ofType: .whatsapp)
+        // }
         
         // Initial presentation of ambient weather with 3 minutes idle delay
         if isWeatherEnabled {

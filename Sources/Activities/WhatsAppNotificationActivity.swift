@@ -216,7 +216,7 @@ public struct WhatsAppExpandedCardView: View {
                                 Text("Sent!")
                                     .font(.system(size: 13, weight: .bold, design: .rounded))
                                     .foregroundColor(waGreen)
-                                Text("Opening WhatsApp…")
+                                Text("Reply sent ✓")
                                     .font(.system(size: 10, weight: .medium, design: .rounded))
                                     .foregroundColor(waGreen.opacity(0.75))
                             }

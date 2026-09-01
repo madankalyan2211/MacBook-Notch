@@ -146,7 +146,7 @@ public final class AnimationEngine {
                 height: max(baseNotchHeight + 1.0, 31.0),
                 cornerRadius: 12.0,
                 topOffset: 0,
-                horizontalPadding: 8,
+                horizontalPadding: 4,
                 verticalPadding: 2
             )
             

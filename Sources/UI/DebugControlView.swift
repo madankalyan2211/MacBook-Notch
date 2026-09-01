@@ -80,6 +80,11 @@ public struct DebugControlView: View {
                         .font(.headline)
                     
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        Button("🎙 Hey Siri Animation") {
+                            let siri = SiriActivity()
+                            controller.activityManager.presentActivity(siri)
+                        }
+                        
                         Button("🎵 Now Playing (Music)") {
                             let music = MusicActivity(
                                 title: "Blinding Lights",

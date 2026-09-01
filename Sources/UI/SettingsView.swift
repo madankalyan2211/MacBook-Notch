@@ -121,10 +121,11 @@ public struct ActivitiesSettingsTab: View {
                 Toggle("Music & Now Playing", isOn: $controller.isMusicEnabled)
                 Toggle("Timer & Countdown", isOn: $controller.isTimerEnabled)
                 Toggle("Clipboard Monitor", isOn: $controller.isClipboardEnabled)
-                Toggle("WhatsApp Message Notifications", isOn: Binding(
-                    get: { WhatsAppNotificationService.shared.isEnabled },
-                    set: { WhatsAppNotificationService.shared.isEnabled = $0 }
-                ))
+                // WhatsApp messaging disabled
+                // Toggle("WhatsApp Message Notifications", isOn: Binding(
+                //     get: { WhatsAppNotificationService.shared.isEnabled },
+                //     set: { WhatsAppNotificationService.shared.isEnabled = $0 }
+                // ))
                 Toggle("Live Weather & Air Quality Pill (Ambient)", isOn: $controller.isWeatherEnabled)
                     .onChange(of: controller.isWeatherEnabled) { enabled in
                         if enabled {

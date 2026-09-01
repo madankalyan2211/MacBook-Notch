@@ -133,7 +133,6 @@ public final class AudioVisualizerService: ObservableObject {
         
         if active {
             // Generate dynamic rhythmic beat patterns
-            let beatPulse = sin(phase * 1.5)
             let bassKick = max(0, sin(phase * 0.8)) * 0.85
             let midEnergy = (sin(phase * 2.3) + 1.0) * 0.45
             let trebleSpike = abs(cos(phase * 3.7)) * 0.6
